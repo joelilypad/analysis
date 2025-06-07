@@ -374,60 +374,92 @@ def generate_case_financial_report(df, output_filename):
     print(f"💰 Case-level financial report saved to: {output_filename}")
 
 
-def process_gusto_file(uploaded_file):
-    import numpy as np
+def process_gusto_file(file_content):
+    """Process raw Gusto time tracking export."""
+    try:
+        # Split file into contractor sections
+        sections = re.split(r'\n\s*"Hours for ([^"]+) \(Contractor\)"\s*\n', file_content)
+        
+        all_records = []
+        current_contractor = None
+        
+        for i, section in enumerate(sections):
+            if i == 0:  # Skip header section
+                continue
+                
+            if i % 2 == 1:  # Contractor name
+                current_contractor = section.strip()
+                continue
+                
+            # Process contractor's time entries
+            try:
+                df = pd.read_csv(io.StringIO(section), parse_dates=['Date'])
+                
+                if df.empty:
+                    continue
+                    
+                # Process each row
+                for _, row in df.iterrows():
+                    # Skip empty rows
+                    if pd.isna(row['Hours']) and pd.isna(row.get('Hours 2', pd.NA)):
+                        continue
+                        
+                    # Process each hours column and corresponding notes
+                    for hours_col, notes_col in [('Hours', 'Notes'), ('Hours 2', 'Notes 2')]:
+                        if hours_col not in row or pd.isna(row[hours_col]):
+                            continue
+                            
+                        hours = estimate_hours(row[hours_col])
+                        if hours == 0:
+                            continue
+                            
+                        district, initials, task = parse_note_format(row.get(notes_col, None))
+                        
+                        record = {
+                            'Date': row['Date'],
+                            'Psychologist': current_contractor,
+                            'Hours': hours,
+                            'District': district,
+                            'Student Initials': initials,
+                            'Raw Task': task,
+                            'Standardized Task': standardize_task(task),
+                            'Time Entry': row[hours_col],
+                            'Note': row.get(notes_col, None)
+                        }
+                        all_records.append(record)
+                        
+            except Exception as e:
+                print(f"Error processing section for {current_contractor}: {str(e)}")
+                continue
+                
+        # Convert to DataFrame
+        df = pd.DataFrame(all_records)
+        
+        # Add derived columns
+        df['Month'] = df['Date'].dt.to_period('M')
+        df['Week'] = df['Date'].dt.to_period('W')
+        
+        # Calculate costs (assuming standard rate, can be customized)
+        df['Cost'] = df['Hours'] * 100  # $100/hour default rate
+        
+        return df
+        
+    except Exception as e:
+        raise Exception(f"Error processing Gusto file: {str(e)}")
 
-    # Read file-like object from Streamlit upload
-    lines = uploaded_file.read().decode("utf-8").splitlines()
-
-    psychologist = None
-    block = []
-    cleaned_rows = []
-
-    for line in lines:
-        if "Hours for" in line and "(Contractor)" in line:
-            if block:
-                cleaned_rows += process_block(block, psychologist)
-                block = []
-            match = re.search(r'Hours for (.+?) \(Contractor\)', line)
-            psychologist = match.group(1) if match else "Unknown"
-        elif line.strip():
-            block.append(line)
-
-    if block:
-        cleaned_rows += process_block(block, psychologist)
-
-    safe_rows = []
-    for i, row in enumerate(cleaned_rows):
-        try:
-            for key, value in row.items():
-                if isinstance(value, (list, tuple, dict, np.ndarray)):
-                    raise ValueError(f"Field '{key}' has unsupported type: {type(value)}")
-            safe_rows.append(row)
-        except Exception as e:
-            print(f"⚠️ Dropping bad row {i}: {e}")
-
-    if not safe_rows:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(safe_rows)
-
-    # Estimate cost using embedded logic
-    df["Estimated Hours"] = pd.to_numeric(df["Estimated Hours"], errors="coerce").fillna(0)
-    df = df[df["Estimated Hours"] > 0].copy()
-    df["Psychologist Clean"] = df["Psychologist"].apply(lambda x: x.split()[0] if isinstance(x, str) else x)
-
-    rates = {
-        "Nancy": 95, "Kathleen": 95, "David": 95, "Melissa": 95, "Emily": 95, "Tarik": 95,
-        "Angela": 70, "Caroline": 70, "Julie": 70, "Lexi": 70, "Shirley": 70
-    }
-
-    df["Hourly Rate"] = df["Psychologist Clean"].map(rates)
-    df["Estimated Cost"] = df["Estimated Hours"] * df["Hourly Rate"]
-
-    return df
-
-
+def process_gusto_upload(uploaded_file):
+    """Process uploaded Gusto file and return cleaned DataFrame."""
+    try:
+        # Read the uploaded file
+        content = uploaded_file.getvalue().decode('utf-8')
+        
+        # Process the data
+        df = process_gusto_file(content)
+        
+        return df
+        
+    except Exception as e:
+        raise Exception(f"Error processing Gusto file: {str(e)}")
 
 # --- Script Entry Point ---
 
