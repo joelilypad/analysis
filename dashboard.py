@@ -9,6 +9,100 @@ from clean_gusto_multi import process_gusto_upload
 from quickbooks_parser import process_quickbooks_upload, generate_revenue_summary, generate_evaluation_counts
 import numpy as np
 
+# ========== CUSTOM CSS ==========
+st.markdown("""
+<style>
+    /* Modern color scheme */
+    :root {
+        --primary: #2563eb;
+        --primary-dark: #1d4ed8;
+        --background: #ffffff;
+        --card: #f8fafc;
+        --card-foreground: #0f172a;
+        --popover: #ffffff;
+        --popover-foreground: #0f172a;
+        --muted: #f1f5f9;
+        --muted-foreground: #64748b;
+        --border: #e2e8f0;
+        --radius: 0.5rem;
+    }
+
+    /* Card-like containers */
+    [data-testid="stMetric"] {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1rem;
+        box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+    }
+    
+    /* Metric label styling */
+    [data-testid="stMetricLabel"] {
+        color: var(--muted-foreground);
+        font-size: 0.875rem !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Metric value styling */
+    [data-testid="stMetricValue"] {
+        color: var(--card-foreground);
+        font-size: 1.875rem !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 1rem;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        padding: 0.5rem 1rem;
+        border-radius: var(--radius);
+        font-weight: 500;
+    }
+    
+    .stTabs [data-baseweb="tab-highlight"] {
+        background: var(--primary);
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+    
+    .stButton > button:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background: var(--background);
+        border-right: 1px solid var(--border);
+    }
+    
+    /* File uploader styling */
+    [data-testid="stFileUploader"] {
+        border: 2px dashed var(--border);
+        border-radius: var(--radius);
+        padding: 1rem;
+    }
+    
+    /* Chart container styling */
+    [data-testid="stPlotlyChart"] {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ========== PAGE CONFIG ==========
 st.set_page_config(
     page_title="🧠 Lilypad Analytics",
@@ -16,14 +110,26 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("🧠 Lilypad Analytics Dashboard")
+# ========== HEADER ==========
 st.markdown("""
-This dashboard helps analyze operational efficiency and financial performance for Lilypad Learning's
-evaluation services. Upload your Gusto time tracking and QuickBooks financial data to get started.
-""")
+<div style='padding: 1rem 0; margin-bottom: 2rem;'>
+    <h1 style='margin: 0; font-size: 2.25rem; font-weight: 600; color: #0f172a;'>
+        🧠 Lilypad Analytics Dashboard
+    </h1>
+    <p style='margin-top: 0.5rem; color: #64748b; font-size: 1rem;'>
+        Analyze operational efficiency and financial performance for Lilypad Learning's evaluation services.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 # ========== FILE UPLOADS ==========
-st.sidebar.header("📁 Upload Your Files")
+st.sidebar.markdown("""
+<div style='margin-bottom: 2rem;'>
+    <h2 style='font-size: 1.25rem; font-weight: 600; color: #0f172a; margin-bottom: 1rem;'>
+        📁 Upload Your Files
+    </h2>
+</div>
+""", unsafe_allow_html=True)
 
 gusto_file = st.sidebar.file_uploader(
     "Gusto Time Tracking Export (CSV)",
@@ -160,8 +266,64 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "💰 Financial Analysis",
     "📈 Efficiency Metrics",
     "👥 Psychologist Analysis",
-    "🔍 Case Details"
+    "�� Case Details"
 ])
+
+# ========== CHART STYLING ==========
+CHART_THEME = {
+    'font_family': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    'background_color': '#ffffff',
+    'paper_bgcolor': '#ffffff',
+    'plot_bgcolor': '#ffffff',
+    'font_color': '#0f172a',
+    'grid_color': '#e2e8f0',
+    'colorway': ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe']
+}
+
+def style_chart(fig):
+    """Apply consistent styling to Plotly charts"""
+    fig.update_layout(
+        font_family=CHART_THEME['font_family'],
+        plot_bgcolor=CHART_THEME['plot_bgcolor'],
+        paper_bgcolor=CHART_THEME['paper_bgcolor'],
+        font_color=CHART_THEME['font_color'],
+        title_font_size=18,
+        title_font_color='#0f172a',
+        title_font_family=CHART_THEME['font_family'],
+        title_x=0,
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="right",
+            x=0.99,
+            bgcolor='rgba(255, 255, 255, 0.8)',
+            bordercolor='#e2e8f0'
+        ),
+        margin=dict(t=40, r=20, b=40, l=20)
+    )
+    
+    fig.update_xaxes(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor=CHART_THEME['grid_color'],
+        zeroline=False,
+        showline=True,
+        linewidth=1,
+        linecolor='#e2e8f0'
+    )
+    
+    fig.update_yaxes(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor=CHART_THEME['grid_color'],
+        zeroline=False,
+        showline=True,
+        linewidth=1,
+        linecolor='#e2e8f0'
+    )
+    
+    return fig
 
 with tab1:
     st.subheader("Time Distribution")
@@ -175,8 +337,10 @@ with tab1:
             task_hours,
             orientation='h',
             title="Hours by Task Type",
-            labels={'value': 'Total Hours', 'Standardized Task': 'Task'}
+            labels={'value': 'Total Hours', 'Standardized Task': 'Task'},
+            color_discrete_sequence=CHART_THEME['colorway']
         )
+        fig = style_chart(fig)
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
@@ -186,8 +350,10 @@ with tab1:
             district_hours,
             orientation='h',
             title="Hours by District",
-            labels={'value': 'Total Hours', 'District': 'District'}
+            labels={'value': 'Total Hours', 'District': 'District'},
+            color_discrete_sequence=CHART_THEME['colorway']
         )
+        fig = style_chart(fig)
         st.plotly_chart(fig, use_container_width=True)
     
     # Time trends
@@ -198,8 +364,11 @@ with tab1:
         x='Date',
         y='Hours',
         color='District',
-        title="Monthly Hours by District"
+        title="Monthly Hours by District",
+        labels={'Date': 'Month', 'Hours': 'Total Hours'},
+        color_discrete_sequence=CHART_THEME['colorway']
     )
+    fig = style_chart(fig)
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
