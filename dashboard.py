@@ -9,6 +9,13 @@ from clean_gusto_multi import process_gusto_upload
 from quickbooks_parser import process_quickbooks_upload, generate_revenue_summary, generate_evaluation_counts
 import numpy as np
 
+# ========== PAGE CONFIG ==========
+st.set_page_config(
+    page_title="🧠 Lilypad Analytics",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # ========== CUSTOM CSS ==========
 st.markdown("""
 <style>
@@ -102,13 +109,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
-# ========== PAGE CONFIG ==========
-st.set_page_config(
-    page_title="🧠 Lilypad Analytics",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # ========== HEADER ==========
 st.markdown("""
