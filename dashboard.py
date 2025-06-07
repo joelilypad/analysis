@@ -7,6 +7,7 @@ from io import StringIO
 import re
 from clean_gusto_multi import process_gusto_upload
 from quickbooks_parser import process_quickbooks_upload, generate_revenue_summary, generate_evaluation_counts
+import numpy as np
 
 # ========== PAGE CONFIG ==========
 st.set_page_config(
@@ -244,41 +245,76 @@ with tab2:
         # Margin analysis
         st.subheader("Margin Analysis")
         
-        # Merge Gusto and QuickBooks data
-        margin_df = pd.DataFrame({
-            'District': filtered_qb.groupby('District')['Amount'].sum().index,
-            'Revenue': filtered_qb.groupby('District')['Amount'].sum().values,
-            'Cost': filtered_df.groupby('District')['Cost'].sum()
-        }).fillna(0)
+        # Get all unique districts from both datasets
+        all_districts = sorted(set(filtered_qb['District'].unique()) | set(filtered_df['District'].unique()))
         
+        # Create revenue and cost series with consistent indices
+        revenue_by_district = filtered_qb.groupby('District')['Amount'].sum()
+        cost_by_district = filtered_df.groupby('District')['Cost'].sum()
+        
+        # Create DataFrame with aligned indices
+        margin_df = pd.DataFrame(index=all_districts)
+        margin_df['Revenue'] = revenue_by_district
+        margin_df['Cost'] = cost_by_district
+        margin_df = margin_df.fillna(0)
+        
+        # Calculate margins
         margin_df['Margin'] = margin_df['Revenue'] - margin_df['Cost']
         margin_df['Margin %'] = (margin_df['Margin'] / margin_df['Revenue'] * 100).round(1)
+        margin_df = margin_df.replace([np.inf, -np.inf], 0)
         
+        # Sort by margin
+        margin_df = margin_df.sort_values('Margin', ascending=True)
+        
+        # Create waterfall chart
         fig = go.Figure()
+        
+        # Revenue bars
         fig.add_trace(go.Bar(
             name='Revenue',
-            y=margin_df['District'],
+            y=margin_df.index,
             x=margin_df['Revenue'],
-            orientation='h'
+            orientation='h',
+            marker_color='rgb(44, 160, 44)'
         ))
+        
+        # Cost bars
         fig.add_trace(go.Bar(
             name='Cost',
-            y=margin_df['District'],
-            x=margin_df['Cost'],
-            orientation='h'
+            y=margin_df.index,
+            x=-margin_df['Cost'],  # Negative to show on left side
+            orientation='h',
+            marker_color='rgb(214, 39, 40)'
         ))
+        
+        # Margin text annotations
+        for idx, row in margin_df.iterrows():
+            fig.add_annotation(
+                y=idx,
+                x=max(row['Revenue'], row['Cost']) + 1000,  # Offset from the larger bar
+                text=f"Margin: ${row['Margin']:,.0f} ({row['Margin %']:,.1f}%)",
+                showarrow=False,
+                font=dict(size=10)
+            )
+        
         fig.update_layout(
-            barmode='overlay',
             title="Revenue vs Cost by District",
+            barmode='overlay',
+            bargap=0.1,
             xaxis_title="Amount ($)",
-            showlegend=True
+            showlegend=True,
+            height=max(400, len(margin_df) * 50)  # Dynamic height based on number of districts
         )
+        
         st.plotly_chart(fig, use_container_width=True)
         
-        # Display margin table
-        st.dataframe(
-            margin_df.sort_values('Margin', ascending=False),
-            hide_index=True
+        # Download button for margin analysis
+        st.download_button(
+            "📥 Download Margin Analysis",
+            margin_df.to_csv(index=True),
+            "margin_analysis.csv",
+            "text/csv",
+            key='download-margin-csv'
         )
     else:
         st.info("📝 Upload QuickBooks data to view financial analysis")
@@ -286,53 +322,95 @@ with tab2:
 with tab3:
     st.subheader("Efficiency Metrics")
     
-    col1, col2 = st.columns(2)
+    # Hours per evaluation by district
+    eval_efficiency = filtered_df[filtered_df['Standardized Task'] == 'Testing'].groupby('District').agg({
+        'Hours': 'sum',
+        'Student Initials': 'nunique'
+    }).reset_index()
     
-    with col1:
-        # Hours per evaluation by district
-        eval_hours = filtered_df[filtered_df['Standardized Task'] == 'Testing'].groupby('District')['Hours'].sum()
-        eval_counts = filtered_df[filtered_df['Standardized Task'] == 'Testing'].groupby('District')['Student Initials'].nunique()
-        hours_per_eval = (eval_hours / eval_counts).sort_values(ascending=True)
-        
-        fig = px.bar(
-            hours_per_eval,
-            orientation='h',
-            title="Average Hours per Evaluation by District",
-            labels={'value': 'Hours per Evaluation', 'District': 'District'}
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    eval_efficiency['Hours per Evaluation'] = (eval_efficiency['Hours'] / eval_efficiency['Student Initials']).round(1)
+    eval_efficiency = eval_efficiency.sort_values('Hours per Evaluation', ascending=True)
     
-    with col2:
-        # Task distribution within evaluations
-        eval_tasks = filtered_df[filtered_df['Student Initials'].notna()]
-        task_dist = eval_tasks.groupby('Standardized Task')['Hours'].sum()
-        fig = px.pie(
-            values=task_dist.values,
-            names=task_dist.index,
-            title="Time Distribution Across Evaluation Tasks"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Efficiency trends
-    monthly_efficiency = (
-        filtered_df[filtered_df['Standardized Task'] == 'Testing']
-        .groupby([pd.Grouper(key='Date', freq='M'), 'District'])
-        .agg(
-            Hours=('Hours', 'sum'),
-            Evaluations=('Student Initials', 'nunique')
-        )
-        .reset_index()
+    fig = px.bar(
+        eval_efficiency,
+        x='Hours per Evaluation',
+        y='District',
+        orientation='h',
+        title="Average Hours per Evaluation by District",
+        labels={'Hours per Evaluation': 'Hours', 'District': 'District'}
     )
-    monthly_efficiency['Hours per Eval'] = monthly_efficiency['Hours'] / monthly_efficiency['Evaluations']
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Task distribution heatmap
+    st.subheader("Task Distribution by District")
+    
+    task_dist = pd.pivot_table(
+        filtered_df,
+        values='Hours',
+        index='District',
+        columns='Standardized Task',
+        aggfunc='sum',
+        fill_value=0
+    )
+    
+    # Convert to percentages
+    task_dist_pct = task_dist.div(task_dist.sum(axis=1), axis=0) * 100
+    
+    fig = px.imshow(
+        task_dist_pct.T,  # Transpose for better visualization
+        title="Task Distribution Heat Map (%)",
+        labels=dict(x="District", y="Task", color="Percentage"),
+        aspect="auto",
+        color_continuous_scale="RdYlBu_r"
+    )
+    
+    fig.update_layout(
+        height=max(400, len(task_dist_pct.columns) * 30)  # Dynamic height based on number of tasks
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Efficiency trends over time
+    st.subheader("Efficiency Trends")
+    
+    monthly_efficiency = filtered_df[filtered_df['Standardized Task'] == 'Testing'].groupby(
+        [pd.Grouper(key='Date', freq='M'), 'District']
+    ).agg({
+        'Hours': 'sum',
+        'Student Initials': 'nunique'
+    }).reset_index()
+    
+    monthly_efficiency['Hours per Evaluation'] = (monthly_efficiency['Hours'] / monthly_efficiency['Student Initials']).round(1)
     
     fig = px.line(
         monthly_efficiency,
         x='Date',
-        y='Hours per Eval',
+        y='Hours per Evaluation',
         color='District',
-        title="Evaluation Efficiency Trends by District"
+        title="Monthly Hours per Evaluation by District"
     )
     st.plotly_chart(fig, use_container_width=True)
+    
+    # Download buttons for efficiency metrics
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.download_button(
+            "📥 Download District Efficiency",
+            eval_efficiency.to_csv(index=False),
+            "district_efficiency.csv",
+            "text/csv",
+            key='download-efficiency-csv'
+        )
+    
+    with col2:
+        st.download_button(
+            "📥 Download Task Distribution",
+            task_dist.to_csv(index=True),
+            "task_distribution.csv",
+            "text/csv",
+            key='download-taskdist-csv'
+        )
 
 with tab4:
     st.subheader("Psychologist Performance")
