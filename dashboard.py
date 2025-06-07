@@ -237,8 +237,11 @@ st.header("💰 Financial Performance")
 total_revenue = filtered_qb['Amount'].sum()
 
 # Count unique evaluations (excluding add-on services)
-eval_mask = filtered_qb['Service Type'].str.contains('Evaluation', na=False)
-total_evals = filtered_qb[eval_mask]['Student Initials'].nunique()
+eval_mask = (
+    filtered_qb['Service Type'].str.contains('Evaluation', na=False) &
+    ~filtered_qb['Service Type'].str.contains('Academic Achievement Testing|IEP Meeting|Remote Setup', na=False)
+)
+total_evals = filtered_qb[eval_mask].groupby(['Invoice', 'Student Initials'])['Service Type'].count().shape[0]
 
 avg_revenue_per_eval = total_revenue / total_evals if total_evals > 0 else 0
 
@@ -339,7 +342,7 @@ with col1:
 
 with col2:
     # Evaluations by district
-    district_evals = filtered_qb[eval_mask].groupby('District')['Student Initials'].nunique().sort_values(ascending=True)
+    district_evals = filtered_qb[eval_mask].groupby(['District', 'Invoice', 'Student Initials'])['Service Type'].count().reset_index().groupby('District').size().sort_values(ascending=True)
     
     # Create bar chart
     fig = go.Figure(data=[
@@ -392,7 +395,7 @@ with col1:
 
 with col2:
     # Monthly evaluations
-    monthly_evals = filtered_qb[eval_mask].groupby('Month')['Student Initials'].nunique()
+    monthly_evals = filtered_qb[eval_mask].groupby(['Month', 'Invoice', 'Student Initials'])['Service Type'].count().reset_index().groupby('Month').size()
     
     # Create line chart
     fig = go.Figure(data=[
