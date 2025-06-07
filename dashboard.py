@@ -131,13 +131,6 @@ st.sidebar.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-gusto_file = st.sidebar.file_uploader(
-    "Gusto Time Tracking Export (CSV)",
-    type="csv",
-    key="gusto_file",
-    help="Upload the raw Gusto contractor hours export"
-)
-
 quickbooks_file = st.sidebar.file_uploader(
     "QuickBooks Financial Export (CSV)",
     type="csv",
@@ -145,24 +138,36 @@ quickbooks_file = st.sidebar.file_uploader(
     help="Upload the QuickBooks sales/revenue export"
 )
 
+gusto_file = st.sidebar.file_uploader(
+    "Gusto Time Tracking Export (Optional, CSV)",
+    type="csv",
+    key="gusto_file",
+    help="Upload the raw Gusto contractor hours export (optional)"
+)
+
 # ========== DATA PROCESSING ==========
 @st.cache_data
-def load_and_process_data(gusto_file, quickbooks_file):
-    gusto_df = None
+def load_and_process_data(quickbooks_file, gusto_file):
     qb_df = None
+    gusto_df = None
     
-    # Process QuickBooks data if available
-    if quickbooks_file:
-        try:
-            st.info("Processing QuickBooks financial data...")
-            qb_df = process_quickbooks_upload(quickbooks_file)
-            if qb_df is not None and not qb_df.empty:
-                st.success(f"✅ Successfully processed QuickBooks data ({len(qb_df)} records)")
-            else:
-                st.warning("⚠️ No valid records found in QuickBooks file")
-        except Exception as e:
-            st.error("❌ Error processing QuickBooks data:")
-            st.error(str(e))
+    if quickbooks_file is None:
+        st.warning("⚠️ Please upload QuickBooks financial data to begin analysis.")
+        st.stop()
+    
+    # Process QuickBooks data
+    try:
+        st.info("Processing QuickBooks financial data...")
+        qb_df = process_quickbooks_upload(quickbooks_file)
+        if qb_df is not None and not qb_df.empty:
+            st.success(f"✅ Successfully processed QuickBooks data ({len(qb_df)} records)")
+        else:
+            st.error("❌ No valid records found in QuickBooks file")
+            st.stop()
+    except Exception as e:
+        st.error("❌ Error processing QuickBooks data:")
+        st.error(str(e))
+        st.stop()
     
     # Process Gusto data if available
     if gusto_file:
@@ -180,50 +185,35 @@ def load_and_process_data(gusto_file, quickbooks_file):
     return qb_df, gusto_df
 
 # Load and process the data
-qb_df, gusto_df = load_and_process_data(gusto_file, quickbooks_file)
-
-if qb_df is None and gusto_df is None:
-    st.warning("⚠️ Please upload either QuickBooks or Gusto data to begin analysis.")
-    st.stop()
+qb_df, gusto_df = load_and_process_data(quickbooks_file, gusto_file)
 
 # ========== FILTERS ==========
 st.sidebar.header("🔎 Filters")
 
-# Date range filter - use QuickBooks dates if available, otherwise Gusto
-if qb_df is not None:
-    date_df = qb_df
-elif gusto_df is not None:
-    date_df = gusto_df
-
+# Date range filter - use QuickBooks dates
 date_range = st.sidebar.date_input(
     "Date Range",
-    value=(date_df['Date'].min(), date_df['Date'].max()),
-    min_value=date_df['Date'].min(),
-    max_value=date_df['Date'].max()
+    value=(qb_df['Date'].min(), qb_df['Date'].max()),
+    min_value=qb_df['Date'].min(),
+    max_value=qb_df['Date'].max()
 )
 
-# District filter - combine districts from both sources if available
-districts = []
-if qb_df is not None:
-    districts.extend(qb_df['District'].dropna().unique())
-if gusto_df is not None:
-    districts.extend(gusto_df['District'].dropna().unique())
-districts = sorted(list(set(districts)))
-
+# District filter from QuickBooks data
+districts = sorted(qb_df['District'].dropna().unique())
 selected_districts = st.sidebar.multiselect(
     "Districts",
     districts,
     default=districts
 )
 
-# Apply filters to both dataframes
-if qb_df is not None:
-    filtered_qb = qb_df[
-        (qb_df['Date'].dt.date >= date_range[0]) &
-        (qb_df['Date'].dt.date <= date_range[1]) &
-        (qb_df['District'].isin(selected_districts))
-    ]
+# Apply filters to QuickBooks data
+filtered_qb = qb_df[
+    (qb_df['Date'].dt.date >= date_range[0]) &
+    (qb_df['Date'].dt.date <= date_range[1]) &
+    (qb_df['District'].isin(selected_districts))
+]
 
+# Apply filters to Gusto data if available
 if gusto_df is not None:
     filtered_gusto = gusto_df[
         (gusto_df['Date'].dt.date >= date_range[0]) &
@@ -234,7 +224,7 @@ if gusto_df is not None:
     # Psychologist filter only if Gusto data available
     psychologists = sorted(gusto_df['Psychologist'].dropna().unique())
     selected_psychs = st.sidebar.multiselect(
-        "Psychologists",
+        "Psychologists (Optional)",
         psychologists,
         default=psychologists
     )
@@ -243,56 +233,225 @@ if gusto_df is not None:
 # ========== FINANCIAL METRICS ==========
 st.header("💰 Financial Performance")
 
-if qb_df is not None:
-    # Calculate financial KPIs from QuickBooks data
-    total_revenue = filtered_qb['Amount'].sum()
-    
-    # Count unique evaluations (excluding add-on services)
-    eval_mask = filtered_qb['Service Type'].str.contains('Evaluation', na=False)
-    total_evals = filtered_qb[eval_mask]['Student Initials'].nunique()
-    
-    avg_revenue_per_eval = total_revenue / total_evals if total_evals > 0 else 0
-    
-    # Calculate costs if Gusto data available
-    if gusto_df is not None:
-        total_cost = filtered_gusto['Cost'].sum()
-        gross_margin = total_revenue - total_cost
-        margin_percent = (gross_margin / total_revenue * 100) if total_revenue > 0 else 0
-    else:
-        total_cost = 0
-        gross_margin = 0
-        margin_percent = 0
-    
-    # Display financial KPIs
+# Calculate financial KPIs from QuickBooks data
+total_revenue = filtered_qb['Amount'].sum()
+
+# Count unique evaluations (excluding add-on services)
+eval_mask = filtered_qb['Service Type'].str.contains('Evaluation', na=False)
+total_evals = filtered_qb[eval_mask]['Student Initials'].nunique()
+
+avg_revenue_per_eval = total_revenue / total_evals if total_evals > 0 else 0
+
+# Display financial KPIs
+if gusto_df is not None:
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Revenue", f"${total_revenue:,.2f}")
-    col2.metric("Total Evaluations", f"{total_evals:,}")
-    col3.metric("Avg Revenue/Eval", f"${avg_revenue_per_eval:,.2f}")
-    if gusto_df is not None:
-        col4.metric("Gross Margin", f"${gross_margin:,.2f}")
+    total_cost = filtered_gusto['Cost'].sum()
+    gross_margin = total_revenue - total_cost
+    margin_percent = (gross_margin / total_revenue * 100) if total_revenue > 0 else 0
+else:
+    col1, col2, col3 = st.columns(3)
+
+col1.metric("Total Revenue", f"${total_revenue:,.2f}")
+col2.metric("Total Evaluations", f"{total_evals:,}")
+col3.metric("Avg Revenue/Eval", f"${avg_revenue_per_eval:,.2f}")
+if gusto_df is not None:
+    col4.metric("Gross Margin", f"${gross_margin:,.2f}")
+
+# Service breakdown
+st.subheader("Service Analysis")
+col1, col2 = st.columns(2)
+
+with col1:
+    # Revenue by service type
+    service_revenue = filtered_qb.groupby('Service Type')['Amount'].sum().sort_values(ascending=True)
     
-    # Service breakdown
-    st.subheader("Service Analysis")
+    # Create bar chart
+    fig = go.Figure(data=[
+        go.Bar(
+            x=service_revenue.values,
+            y=service_revenue.index,
+            orientation='h',
+            text=[f"${x:,.0f}" for x in service_revenue.values],
+            textposition='auto',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Revenue by Service Type",
+        xaxis_title="Revenue ($)",
+        showlegend=False,
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+with col2:
+    # Service bundle analysis
+    bundle_revenue = filtered_qb.groupby('Service Bundle')['Amount'].sum().sort_values(ascending=True)
+    
+    # Create bar chart
+    fig = go.Figure(data=[
+        go.Bar(
+            x=bundle_revenue.values,
+            y=bundle_revenue.index,
+            orientation='h',
+            text=[f"${x:,.0f}" for x in bundle_revenue.values],
+            textposition='auto',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Revenue by Service Bundle",
+        xaxis_title="Revenue ($)",
+        showlegend=False,
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+# District revenue analysis
+st.subheader("District Analysis")
+col1, col2 = st.columns(2)
+
+with col1:
+    # Revenue by district
+    district_revenue = filtered_qb.groupby('District')['Amount'].sum().sort_values(ascending=True)
+    
+    # Create bar chart
+    fig = go.Figure(data=[
+        go.Bar(
+            x=district_revenue.values,
+            y=district_revenue.index,
+            orientation='h',
+            text=[f"${x:,.0f}" for x in district_revenue.values],
+            textposition='auto',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Revenue by District",
+        xaxis_title="Revenue ($)",
+        showlegend=False,
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+with col2:
+    # Evaluations by district
+    district_evals = filtered_qb[eval_mask].groupby('District')['Student Initials'].nunique().sort_values(ascending=True)
+    
+    # Create bar chart
+    fig = go.Figure(data=[
+        go.Bar(
+            x=district_evals.values,
+            y=district_evals.index,
+            orientation='h',
+            text=district_evals.values,
+            textposition='auto',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Evaluations by District",
+        xaxis_title="Number of Evaluations",
+        showlegend=False,
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+# Monthly trends
+st.subheader("Monthly Trends")
+col1, col2 = st.columns(2)
+
+with col1:
+    # Monthly revenue
+    monthly_revenue = filtered_qb.groupby('Month')['Amount'].sum()
+    
+    # Create line chart
+    fig = go.Figure(data=[
+        go.Scatter(
+            x=monthly_revenue.index.astype(str),
+            y=monthly_revenue.values,
+            mode='lines+markers',
+            text=[f"${x:,.0f}" for x in monthly_revenue.values],
+            textposition='top center',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Monthly Revenue",
+        xaxis_title="Month",
+        yaxis_title="Revenue ($)",
+        showlegend=False,
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+with col2:
+    # Monthly evaluations
+    monthly_evals = filtered_qb[eval_mask].groupby('Month')['Student Initials'].nunique()
+    
+    # Create line chart
+    fig = go.Figure(data=[
+        go.Scatter(
+            x=monthly_evals.index.astype(str),
+            y=monthly_evals.values,
+            mode='lines+markers',
+            text=monthly_evals.values,
+            textposition='top center',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Monthly Evaluations",
+        xaxis_title="Month",
+        yaxis_title="Number of Evaluations",
+        showlegend=False,
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+# ========== TIME TRACKING ANALYSIS ==========
+if gusto_df is not None:
+    st.header("⏱️ Time Tracking Analysis")
+    st.info("Note: Time tracking data is supplementary and may not perfectly align with financial records.")
+    
+    # Time tracking KPIs
+    col1, col2, col3 = st.columns(3)
+    
+    total_hours = filtered_gusto['Hours'].sum()
+    avg_hours_per_eval = total_hours / total_evals if total_evals > 0 else 0
+    hourly_revenue = total_revenue / total_hours if total_hours > 0 else 0
+    
+    col1.metric("Total Hours", f"{total_hours:,.1f}")
+    col2.metric("Avg Hours/Eval", f"{avg_hours_per_eval:,.1f}")
+    col3.metric("Revenue/Hour", f"${hourly_revenue:,.2f}")
+    
+    # Hours by psychologist
+    st.subheader("Psychologist Analysis")
     col1, col2 = st.columns(2)
     
     with col1:
-        # Revenue by service type
-        service_revenue = filtered_qb.groupby('Service Type')['Amount'].sum().sort_values(ascending=True)
+        psych_hours = filtered_gusto.groupby('Psychologist')['Hours'].sum().sort_values(ascending=True)
         
         # Create bar chart
         fig = go.Figure(data=[
             go.Bar(
-                x=service_revenue.values,
-                y=service_revenue.index,
+                x=psych_hours.values,
+                y=psych_hours.index,
                 orientation='h',
-                text=[f"${x:,.0f}" for x in service_revenue.values],
+                text=[f"{x:,.1f}" for x in psych_hours.values],
                 textposition='auto',
             )
         ])
         
         fig.update_layout(
-            title="Revenue by Service Type",
-            xaxis_title="Revenue ($)",
+            title="Hours by Psychologist",
+            xaxis_title="Hours",
             showlegend=False,
             height=400
         )
@@ -300,181 +459,51 @@ if qb_df is not None:
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        # Service bundle analysis
-        bundle_revenue = filtered_qb.groupby('Service Bundle')['Amount'].sum().sort_values(ascending=True)
+        psych_evals = filtered_gusto.groupby('Psychologist')['Student Initials'].nunique().sort_values(ascending=True)
         
         # Create bar chart
         fig = go.Figure(data=[
             go.Bar(
-                x=bundle_revenue.values,
-                y=bundle_revenue.index,
+                x=psych_evals.values,
+                y=psych_evals.index,
                 orientation='h',
-                text=[f"${x:,.0f}" for x in bundle_revenue.values],
+                text=psych_evals.values,
                 textposition='auto',
             )
         ])
         
         fig.update_layout(
-            title="Revenue by Service Bundle",
-            xaxis_title="Revenue ($)",
-            showlegend=False,
-            height=400
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-    # District revenue analysis
-    st.subheader("District Analysis")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Revenue by district
-        district_revenue = filtered_qb.groupby('District')['Amount'].sum().sort_values(ascending=True)
-        
-        # Create bar chart
-        fig = go.Figure(data=[
-            go.Bar(
-                x=district_revenue.values,
-                y=district_revenue.index,
-                orientation='h',
-                text=[f"${x:,.0f}" for x in district_revenue.values],
-                textposition='auto',
-            )
-        ])
-        
-        fig.update_layout(
-            title="Revenue by District",
-            xaxis_title="Revenue ($)",
-            showlegend=False,
-            height=400
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Evaluations by district
-        district_evals = filtered_qb[eval_mask].groupby('District')['Student Initials'].nunique().sort_values(ascending=True)
-        
-        # Create bar chart
-        fig = go.Figure(data=[
-            go.Bar(
-                x=district_evals.values,
-                y=district_evals.index,
-                orientation='h',
-                text=district_evals.values,
-                textposition='auto',
-            )
-        ])
-        
-        fig.update_layout(
-            title="Evaluations by District",
+            title="Evaluations by Psychologist",
             xaxis_title="Number of Evaluations",
             showlegend=False,
             height=400
         )
         
         st.plotly_chart(fig, use_container_width=True)
-        
-    # Monthly trends
-    st.subheader("Monthly Trends")
-    col1, col2 = st.columns(2)
     
-    with col1:
-        # Monthly revenue
-        monthly_revenue = filtered_qb.groupby('Month')['Amount'].sum()
-        
-        # Create line chart
-        fig = go.Figure(data=[
-            go.Scatter(
-                x=monthly_revenue.index.astype(str),
-                y=monthly_revenue.values,
-                mode='lines+markers',
-                text=[f"${x:,.0f}" for x in monthly_revenue.values],
-                textposition='top center',
-            )
-        ])
-        
-        fig.update_layout(
-            title="Monthly Revenue",
-            xaxis_title="Month",
-            yaxis_title="Revenue ($)",
-            showlegend=False,
-            height=400
+    # Monthly hours trend
+    st.subheader("Monthly Hours")
+    monthly_hours = filtered_gusto.groupby('Month')['Hours'].sum()
+    
+    # Create line chart
+    fig = go.Figure(data=[
+        go.Scatter(
+            x=monthly_hours.index.astype(str),
+            y=monthly_hours.values,
+            mode='lines+markers',
+            text=[f"{x:,.1f}" for x in monthly_hours.values],
+            textposition='top center',
         )
-        
-        st.plotly_chart(fig, use_container_width=True)
+    ])
     
-    with col2:
-        # Monthly evaluations
-        monthly_evals = filtered_qb[eval_mask].groupby('Month')['Student Initials'].nunique()
-        
-        # Create line chart
-        fig = go.Figure(data=[
-            go.Scatter(
-                x=monthly_evals.index.astype(str),
-                y=monthly_evals.values,
-                mode='lines+markers',
-                text=monthly_evals.values,
-                textposition='top center',
-            )
-        ])
-        
-        fig.update_layout(
-            title="Monthly Evaluations",
-            xaxis_title="Month",
-            yaxis_title="Number of Evaluations",
-            showlegend=False,
-            height=400
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-
-else:
-    st.warning("⚠️ Upload QuickBooks data to view financial metrics")
-
-# ========== TIME TRACKING ==========
-if gusto_df is not None:
-    st.header("⏱️ Time Tracking")
-    st.warning("""
-    ⚠️ Note: Time tracking data from Gusto may contain inconsistencies due to manual entry errors. 
-    The financial metrics above provide more reliable information about completed evaluations.
-    """)
-    
-    # Calculate time-based KPIs
-    total_hours = filtered_gusto['Hours'].sum()
-    avg_hours_per_eval = total_hours / total_evals if total_evals > 0 else 0
-    
-    # Display time KPIs
-    col1, col2 = st.columns(2)
-    col1.metric("Total Hours", f"{total_hours:,.1f}")
-    col2.metric("Avg Hours/Eval", f"{avg_hours_per_eval:.1f}")
-    
-    # Time distribution
-    st.subheader("Time Distribution")
-    task_hours = filtered_gusto.groupby('Standardized Task')['Hours'].sum().sort_values(ascending=True)
-    fig = px.bar(
-        task_hours,
-        orientation='h',
-        title="Hours by Task Type",
-        labels={'value': 'Total Hours', 'Standardized Task': 'Task'},
-        color_discrete_sequence=CHART_THEME['colorway']
+    fig.update_layout(
+        title="Monthly Hours",
+        xaxis_title="Month",
+        yaxis_title="Hours",
+        showlegend=False,
+        height=400
     )
-    fig = style_chart(fig)
-    st.plotly_chart(fig, use_container_width=True)
     
-    # Time trends
-    st.subheader("Time Trends")
-    monthly_hours = filtered_gusto.groupby([pd.Grouper(key='Date', freq='M'), 'District'])['Hours'].sum().reset_index()
-    fig = px.line(
-        monthly_hours,
-        x='Date',
-        y='Hours',
-        color='District',
-        title="Monthly Hours by District",
-        labels={'Date': 'Month', 'Hours': 'Total Hours'},
-        color_discrete_sequence=CHART_THEME['colorway']
-    )
-    fig = style_chart(fig)
     st.plotly_chart(fig, use_container_width=True)
 
 # ========== DOWNLOAD SECTION ==========
