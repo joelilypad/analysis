@@ -375,13 +375,24 @@ def generate_case_financial_report(df, output_filename):
 
 
 def process_gusto_file(file_content):
-    """Process raw Gusto time tracking export."""
+    """Process raw Gusto time tracking export with robust handling of its complex structure.
+    
+    The Gusto export has several challenging characteristics:
+    1. Non-tabular format with psychologist blocks
+    2. Multiple Hours/Notes column pairs
+    3. Semi-structured free text notes
+    4. Inconsistent formatting and missing data
+    5. Embedded metadata in notes
+    """
     try:
-        # Split file into contractor sections
+        # Step 1: Split into psychologist blocks
+        # Format: "Hours for NAME (Contractor)"
         sections = re.split(r'\n\s*"Hours for ([^"]+) \(Contractor\)"\s*\n', file_content)
         
         all_records = []
         current_contractor = None
+        processed_blocks = 0
+        error_blocks = 0
         
         for i, section in enumerate(sections):
             if i == 0:  # Skip header section
@@ -391,56 +402,109 @@ def process_gusto_file(file_content):
                 current_contractor = section.strip()
                 continue
                 
-            # Process contractor's time entries
+            # Step 2: Process each contractor's block
             try:
-                df = pd.read_csv(io.StringIO(section), parse_dates=['Date'])
+                # Clean up the section data - remove empty lines and extra whitespace
+                cleaned_lines = [line.strip() for line in section.split('\n') if line.strip()]
+                cleaned_section = '\n'.join(cleaned_lines)
                 
+                # Read CSV data
+                df = pd.read_csv(io.StringIO(cleaned_section))
+                
+                # Skip if no data
                 if df.empty:
                     continue
+                
+                # Step 3: Handle date parsing
+                date_col = '"Date"' if '"Date"' in df.columns else 'Date'
+                if date_col in df.columns:
+                    # Try different date formats
+                    for date_format in ['%m/%d/%y', '%m/%d/%Y']:
+                        try:
+                            df['Date'] = pd.to_datetime(df[date_col].str.strip('"'), format=date_format)
+                            break
+                        except:
+                            continue
                     
-                # Process each row
-                for _, row in df.iterrows():
-                    # Skip empty rows
-                    if pd.isna(row['Hours']) and pd.isna(row.get('Hours 2', pd.NA)):
+                    # If specific formats fail, try automatic parsing
+                    if 'Date' not in df.columns:
+                        df['Date'] = pd.to_datetime(df[date_col].str.strip('"'), errors='coerce')
+                    
+                    # Drop rows with invalid dates
+                    df = df.dropna(subset=['Date'])
+                    
+                    # Skip if no valid dates
+                    if df.empty:
                         continue
+                    
+                    # Step 4: Process each row and handle multiple Hours/Notes pairs
+                    for _, row in df.iterrows():
+                        # Find all Hours columns
+                        hours_cols = [col for col in row.index if col.startswith('Hours') and not col.startswith('Hours for')]
+                        notes_cols = [col for col in row.index if col.startswith('Notes')]
                         
-                    # Process each hours column and corresponding notes
-                    for hours_col, notes_col in [('Hours', 'Notes'), ('Hours 2', 'Notes 2')]:
-                        if hours_col not in row or pd.isna(row[hours_col]):
-                            continue
+                        # Process each Hours/Notes pair
+                        for hours_col, notes_col in zip(hours_cols, notes_cols):
+                            if pd.isna(row[hours_col]):
+                                continue
+                                
+                            hours = estimate_hours(row[hours_col])
+                            if not hours:
+                                continue
+                                
+                            # Step 5: Parse the semi-structured notes
+                            note = row.get(notes_col)
+                            district, initials, task = parse_note_format(note)
                             
-                        hours = estimate_hours(row[hours_col])
-                        if hours == 0:
-                            continue
+                            # Create record with all extracted information
+                            record = {
+                                'Date': row['Date'],
+                                'Psychologist': current_contractor,
+                                'Hours': hours,
+                                'District': district,
+                                'Student Initials': initials,
+                                'Raw Task': task,
+                                'Standardized Task': standardize_task(task),
+                                'Time Entry': row[hours_col],
+                                'Note': note,
+                                'Hours Column': hours_col,  # Track which hours column was used
+                                'Notes Column': notes_col   # Track which notes column was used
+                            }
+                            all_records.append(record)
+                
+                processed_blocks += 1
                             
-                        district, initials, task = parse_note_format(row.get(notes_col, None))
-                        
-                        record = {
-                            'Date': row['Date'],
-                            'Psychologist': current_contractor,
-                            'Hours': hours,
-                            'District': district,
-                            'Student Initials': initials,
-                            'Raw Task': task,
-                            'Standardized Task': standardize_task(task),
-                            'Time Entry': row[hours_col],
-                            'Note': row.get(notes_col, None)
-                        }
-                        all_records.append(record)
-                        
             except Exception as e:
-                print(f"Error processing section for {current_contractor}: {str(e)}")
+                error_blocks += 1
+                print(f"Error processing block for {current_contractor}: {str(e)}")
                 continue
                 
-        # Convert to DataFrame
+        # Step 6: Validate and create final DataFrame
+        if not all_records:
+            raise Exception(f"No valid records found in file. Processed blocks: {processed_blocks}, Error blocks: {error_blocks}")
+            
         df = pd.DataFrame(all_records)
         
-        # Add derived columns
+        # Step 7: Add derived columns and calculations
         df['Month'] = df['Date'].dt.to_period('M')
         df['Week'] = df['Date'].dt.to_period('W')
         
-        # Calculate costs (assuming standard rate, can be customized)
-        df['Cost'] = df['Hours'] * 100  # $100/hour default rate
+        # Calculate costs using psychologist-specific rates
+        psychologist_rates = {
+            "Nancy": 95, "Kathleen": 95, "David": 95, "Melissa": 95, "Emily": 95, "Tarik": 95,
+            "Angela": 70, "Caroline": 70, "Julie": 70, "Lexi": 70, "Shirley": 70
+        }
+        
+        # Extract first name for rate lookup
+        df['Psychologist_First_Name'] = df['Psychologist'].apply(lambda x: x.split()[0] if isinstance(x, str) else None)
+        df['Rate'] = df['Psychologist_First_Name'].map(psychologist_rates).fillna(100)  # Default to 100 if not found
+        df['Cost'] = df['Hours'] * df['Rate']
+        
+        # Clean up temporary columns
+        df = df.drop(columns=['Psychologist_First_Name'])
+        
+        print(f"Successfully processed {processed_blocks} blocks with {error_blocks} errors")
+        print(f"Total records extracted: {len(df)}")
         
         return df
         
@@ -460,6 +524,26 @@ def process_gusto_upload(uploaded_file):
         
     except Exception as e:
         raise Exception(f"Error processing Gusto file: {str(e)}")
+
+def parse_note_format(note):
+    """Parse a note into district, student initials, and task."""
+    if pd.isna(note):
+        return None, None, None
+        
+    note = str(note).strip()
+    
+    # Remove time range if present at the start
+    note = re.sub(r'^\d{1,2}:\d{2}(?: ?[APMapm]{2})?\s*-\s*\d{1,2}:\d{2}(?: ?[APMapm]{2})?\s*>?\s*', '', note)
+    
+    # Split by '>'
+    parts = [p.strip() for p in note.split('>')]
+    
+    # Extract components
+    district = standardize_district(parts[0]) if len(parts) > 0 else None
+    initials = extract_student_initials(note) if len(parts) > 1 else None
+    task = extract_task(note) if len(parts) > 2 else None
+    
+    return district, initials, task
 
 # --- Script Entry Point ---
 
