@@ -3,10 +3,48 @@ import re
 from datetime import datetime
 import io
 
+def extract_service_components(description):
+    """Extract detailed service components from description."""
+    if pd.isna(description):
+        return []
+    
+    description = str(description).lower()
+    components = []
+    
+    # Base evaluation type
+    if 'bilingual' in description:
+        if 'spanish & haitian creole' in description or 'spanish and haitian creole' in description:
+            components.append('Multilingual Evaluation')
+        elif 'haitian creole' in description:
+            components.append('Haitian Creole Evaluation')
+        elif 'spanish' in description:
+            components.append('Spanish Evaluation')
+        else:
+            components.append('Bilingual Evaluation')
+    elif 'psychoeducational evaluation' in description:
+        if 'cognitive only' in description:
+            components.append('Cognitive Only')
+        elif 'educational only' in description:
+            components.append('Educational Only')
+        else:
+            components.append('Full Evaluation')
+    
+    # Additional components
+    if 'academic' in description and 'assessment' in description:
+        components.append('Academic Testing')
+    if 'iep' in description and ('meeting' in description or 'presentation' in description):
+        components.append('IEP Meeting')
+    if 'rating scales' in description:
+        components.append('Rating Scales')
+    if 'set-up' in description or 'setup' in description:
+        components.append('Remote Setup')
+        
+    return components
+
 def extract_student_info(description):
     """Extract student initials and service type from description."""
     if pd.isna(description):
-        return None, None, None
+        return None, None, None, []
         
     description = str(description).strip()
     
@@ -18,30 +56,30 @@ def extract_student_info(description):
     initials_match = re.search(r'\(([A-Z]{2,3})\)', description)
     initials = initials_match.group(1) if initials_match else None
     
-    # Determine service type
+    # Extract service components
+    components = extract_service_components(description)
+    
+    # Determine primary service type
     service_type = None
-    desc_lower = description.lower()
-    
-    if 'bilingual' in desc_lower:
-        if 'low-incidence' in desc_lower:
-            service_type = 'Low-Incidence Bilingual Evaluation'
-        else:
+    if components:
+        if 'Multilingual Evaluation' in components:
+            service_type = 'Multilingual Evaluation'
+        elif any(c for c in components if 'Bilingual' in c):
             service_type = 'Bilingual Evaluation'
-    elif 'psychoeducational evaluation' in desc_lower:
-        if 'cognitive only' in desc_lower:
+        elif 'Cognitive Only' in components:
             service_type = 'Cognitive Only'
-        elif 'educational only' in desc_lower:
+        elif 'Educational Only' in components:
             service_type = 'Educational Only'
-        else:
+        elif 'Full Evaluation' in components:
             service_type = 'Full Evaluation'
-    elif 'academic achievement' in desc_lower:
-        service_type = 'Academic Testing'
-    elif 'iep meeting' in desc_lower:
-        service_type = 'IEP Meeting'
-    elif 'set-up' in desc_lower:
-        service_type = 'Setup Fee'
+        elif 'Academic Testing' in components:
+            service_type = 'Academic Testing'
+        elif 'IEP Meeting' in components:
+            service_type = 'IEP Meeting'
+        elif 'Remote Setup' in components:
+            service_type = 'Setup Fee'
     
-    return initials, eval_num, service_type
+    return initials, eval_num, service_type, components
 
 def clean_amount(amount_str):
     """Clean amount string to numeric value."""
@@ -92,8 +130,8 @@ def process_quickbooks_file(file_content):
             # Process transaction row
             if pd.notna(row['Transaction date']):
                 try:
-                    # Extract student info
-                    initials, eval_num, service_type = extract_student_info(row['Line description'])
+                    # Extract student info and service components
+                    initials, eval_num, service_type, components = extract_student_info(row['Line description'])
                     
                     record = {
                         'Date': pd.to_datetime(row['Transaction date']),
@@ -104,6 +142,7 @@ def process_quickbooks_file(file_content):
                         'Student Initials': initials,
                         'Evaluation Number': eval_num,
                         'Service Type': service_type,
+                        'Service Components': components,
                         'Amount': clean_amount(row['Amount']),
                         'Quantity': clean_amount(row['Quantity']),
                         'Unit Price': clean_amount(row['Sales price'])
@@ -120,6 +159,12 @@ def process_quickbooks_file(file_content):
         # Add derived columns
         df['Month'] = df['Date'].dt.to_period('M')
         df['Week'] = df['Date'].dt.to_period('W')
+        
+        # Group related services by invoice and student
+        df['Service Bundle'] = df.apply(lambda x: 
+            ' + '.join(sorted(set(x['Service Components']))) if isinstance(x['Service Components'], list) else '',
+            axis=1
+        )
         
         # Standardize district names to match Gusto data
         district_map = {
@@ -173,4 +218,19 @@ def generate_evaluation_counts(df, group_by='District'):
     evals = df[df['Service Type'].str.contains('Evaluation', na=False)]
     counts = evals.groupby([group_by, 'Month'])['Evaluation Number'].nunique().unstack(fill_value=0)
     counts.loc['Total'] = counts.sum()
-    return counts 
+    return counts
+
+def generate_service_bundle_analysis(df):
+    """Generate analysis of service bundles and their revenue."""
+    bundle_summary = df.groupby(['Service Bundle', 'District']).agg({
+        'Amount': ['sum', 'mean', 'count'],
+        'Student Initials': 'nunique'
+    }).round(2)
+    
+    bundle_summary.columns = ['Total Revenue', 'Average Revenue', 'Transaction Count', 'Student Count']
+    return bundle_summary
+
+def generate_pricing_analysis(df):
+    """Generate analysis of pricing patterns by district and service type."""
+    pricing = df.groupby(['District', 'Service Type', 'Service Bundle'])['Unit Price'].agg(['min', 'max', 'mean', 'count']).round(2)
+    return pricing 
