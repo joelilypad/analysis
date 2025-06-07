@@ -47,19 +47,32 @@ def load_and_process_data(gusto_file, quickbooks_file):
         
     try:
         # Process Gusto data
+        st.info("Processing Gusto time tracking data...")
         gusto_df = process_gusto_upload(gusto_file)
-        st.success("✅ Successfully processed Gusto time tracking data")
+        if gusto_df is not None and not gusto_df.empty:
+            st.success(f"✅ Successfully processed Gusto time tracking data ({len(gusto_df)} records)")
+        else:
+            st.error("❌ No valid records found in Gusto file")
+            return None, None
         
         # Process QuickBooks data if available
         qb_df = None
         if quickbooks_file:
+            st.info("Processing QuickBooks financial data...")
             qb_df = process_quickbooks_upload(quickbooks_file)
-            st.success("✅ Successfully processed QuickBooks financial data")
+            if qb_df is not None and not qb_df.empty:
+                st.success(f"✅ Successfully processed QuickBooks data ({len(qb_df)} records)")
+            else:
+                st.warning("⚠️ No valid records found in QuickBooks file")
             
         return gusto_df, qb_df
         
     except Exception as e:
-        st.error(f"❌ Error processing data: {str(e)}")
+        import traceback
+        st.error("❌ Error processing data:")
+        st.error(str(e))
+        st.error("Detailed error information:")
+        st.code(traceback.format_exc())
         return None, None
 
 # Load and process the data
