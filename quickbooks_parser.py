@@ -100,58 +100,62 @@ def process_quickbooks_file(file_content):
     try:
         # Skip header rows and find start of data
         lines = file_content.split('\n')
-        start_idx = 0
+        start_idx = None
+        current_customer = None
+        
+        # Find the header row that contains column names
         for i, line in enumerate(lines):
             if 'Transaction date,Transaction type' in line:
                 start_idx = i
                 break
         
+        if start_idx is None:
+            raise Exception("Could not find column headers in file")
+        
         # Read CSV starting from data rows
         df = pd.read_csv(io.StringIO('\n'.join(lines[start_idx:])))
         
-        # Clean column names
+        # Clean column names and drop empty columns
         df.columns = [col.strip() for col in df.columns]
+        df = df.dropna(axis=1, how='all')
         
         # Initialize lists for records
         records = []
-        current_customer = None
         
         # Process each row
         for _, row in df.iterrows():
-            # Update current customer if not empty
-            if not pd.isna(row.iloc[0]) and row.iloc[0].strip():
-                current_customer = row.iloc[0].strip()
+            # Skip empty rows and total rows
+            if pd.isna(row['Transaction date']) or str(row.get('Transaction type', '')).lower().startswith('total'):
                 continue
-            
-            # Skip total rows
-            if str(row.iloc[0]).startswith('Total for'):
+                
+            try:
+                # Extract student info and service components
+                initials, eval_num, service_type, components = extract_student_info(row['Line description'])
+                
+                # Get customer from the Customer column or use the last known customer
+                customer = row['Customer'] if pd.notna(row['Customer']) else current_customer
+                if pd.notna(customer):
+                    current_customer = customer
+                
+                record = {
+                    'Date': pd.to_datetime(row['Transaction date']),
+                    'Customer': customer,
+                    'Invoice': row['Num'],
+                    'Service': row['Product/Service full name'],
+                    'Description': row['Line description'],
+                    'Student Initials': initials,
+                    'Evaluation Number': eval_num,
+                    'Service Type': service_type,
+                    'Service Components': components,
+                    'Amount': clean_amount(row['Amount']),
+                    'Quantity': clean_amount(row['Quantity']),
+                    'Unit Price': clean_amount(row['Sales price'])
+                }
+                records.append(record)
+                
+            except Exception as e:
+                print(f"Error processing row: {str(e)}")
                 continue
-            
-            # Process transaction row
-            if pd.notna(row['Transaction date']):
-                try:
-                    # Extract student info and service components
-                    initials, eval_num, service_type, components = extract_student_info(row['Line description'])
-                    
-                    record = {
-                        'Date': pd.to_datetime(row['Transaction date']),
-                        'Customer': current_customer,
-                        'Invoice': row['Num'],
-                        'Service': row['Product/Service full name'],
-                        'Description': row['Line description'],
-                        'Student Initials': initials,
-                        'Evaluation Number': eval_num,
-                        'Service Type': service_type,
-                        'Service Components': components,
-                        'Amount': clean_amount(row['Amount']),
-                        'Quantity': clean_amount(row['Quantity']),
-                        'Unit Price': clean_amount(row['Sales price'])
-                    }
-                    records.append(record)
-                    
-                except Exception as e:
-                    print(f"Error processing row: {str(e)}")
-                    continue
         
         # Convert to DataFrame
         df = pd.DataFrame(records)
