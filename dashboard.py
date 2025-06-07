@@ -4,95 +4,85 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from io import StringIO
+import re
 
-st.set_page_config(page_title="Lilypad Dashboard", layout="wide")
+st.set_page_config(page_title="Lilypad Analytics", layout="wide")
 st.title("🧠 Lilypad Evaluation Dashboard")
 
-# --- Sidebar File Uploads ---
+# ========== FILE UPLOADS ==========
 st.sidebar.header("📁 Upload Your Files")
 
-eval_file = st.sidebar.file_uploader("Upload Cleaned Evaluation CSV", type="csv", key="eval_file")
-sales_file = st.sidebar.file_uploader("Upload QuickBooks Sales Export", type="csv", key="sales_file")
+eval_file = st.sidebar.file_uploader("Cleaned Evaluation CSV", type="csv", key="eval_file")
+sales_file = st.sidebar.file_uploader("QuickBooks Sales Export (optional)", type="csv", key="sales_file")
 
 @st.cache_data
-def load_csv(uploaded_file):
-    return pd.read_csv(uploaded_file)
-
-if eval_file:
-    df = load_csv(eval_file)
-    st.success("✅ Evaluation file loaded!")
-else:
-    st.warning("⚠️ Please upload the cleaned evaluation CSV.")
-
-if sales_file:
-    sales_df = load_csv(sales_file)
-    st.success("✅ Sales (revenue) file loaded!")
-else:
-    st.warning("⚠️ You can optionally upload the revenue (QuickBooks) CSV.")
+def load_csv(file):
+    return pd.read_csv(file)
 
 if not eval_file:
+    st.warning("Please upload at least the cleaned evaluation CSV.")
     st.stop()
 
-# --- Preprocess Evaluation Data ---
+df = load_csv(eval_file)
+st.success("✅ Evaluation data loaded.")
+
+sales_df = load_csv(sales_file) if sales_file else None
+if sales_df is not None:
+    st.success("✅ Sales data loaded.")
+
+# ========== PREPROCESSING ==========
 df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 df["Month"] = df["Date"].dt.to_period("M").astype(str)
 df["Case ID"] = df["Student Initials"].fillna("") + " | " + df["District"].fillna("")
+df["Initials"] = df["Student Initials"].str.upper().str.strip()
 
-# --- Join Sales Data to Evaluation if Provided ---
-if sales_file:
-    # Preprocess Sales Data
+if sales_df is not None:
     sales_df["Date"] = pd.to_datetime(sales_df["Date"], errors="coerce")
     sales_df["Description"] = sales_df["Description"].astype(str)
-
-    # Try to extract initials from sales line items
-    def extract_initials(text):
-        match = pd.Series(text).str.extract(r'([A-Z]{2,3})')[0]
-        return match.str.strip().str.upper()
-
-    sales_df["Initials"] = extract_initials(sales_df["Description"])
+    sales_df["Initials"] = sales_df["Description"].apply(
+        lambda text: re.findall(r'\b[A-Z]{2,3}\b', text)[0] if re.findall(r'\b[A-Z]{2,3}\b', text) else None
+    )
+    sales_df["Initials"] = sales_df["Initials"].str.upper().str.strip()
     sales_df["Revenue"] = pd.to_numeric(sales_df["Amount"], errors="coerce")
 
-    # Join by Case ID or Initials+District heuristics
-    merged_df = df.copy()
-    merged_df["Initials"] = merged_df["Student Initials"].str.upper().str.strip()
-
     revenue_map = sales_df.groupby("Initials")["Revenue"].sum()
-    merged_df["Revenue"] = merged_df["Initials"].map(revenue_map)
-
-    # Estimate Margin
-    merged_df["Revenue"].fillna(0, inplace=True)
-    merged_df["Margin"] = merged_df["Revenue"] - merged_df["Estimated Cost"]
+    df["Revenue"] = df["Initials"].map(revenue_map).fillna(0)
 else:
-    merged_df = df.copy()
-    merged_df["Revenue"] = 0
-    merged_df["Margin"] = -merged_df["Estimated Cost"]
+    df["Revenue"] = 0
 
-# --- Sidebar Filters ---
-st.sidebar.markdown("---")
-st.sidebar.header("🔎 Filter Dashboard")
-months = st.sidebar.multiselect("Select Month", sorted(merged_df["Month"].unique()))
-districts = st.sidebar.multiselect("Select District", sorted(merged_df["District"].dropna().unique()))
-psychs = st.sidebar.multiselect("Select Psychologist", sorted(merged_df["Psychologist"].dropna().unique()))
+df["Margin"] = df["Revenue"] - df["Estimated Cost"]
 
-filtered = merged_df.copy()
-if months: filtered = filtered[filtered["Month"].isin(months)]
-if districts: filtered = filtered[filtered["District"].isin(districts)]
-if psychs: filtered = filtered[filtered["Psychologist"].isin(psychs)]
+# ========== SIDEBAR FILTERS ==========
+st.sidebar.header("🔎 Filters")
 
-# --- KPIs ---
-st.subheader("📊 Key Metrics")
+months_all = sorted(df["Month"].dropna().unique())
+districts_all = sorted(df["District"].dropna().unique())
+psychs_all = sorted(df["Psychologist"].dropna().unique())
+
+months = st.sidebar.multiselect("Month", months_all, default=months_all)
+districts = st.sidebar.multiselect("District", districts_all, default=districts_all)
+psychs = st.sidebar.multiselect("Psychologist", psychs_all, default=psychs_all)
+
+filtered = df[
+    df["Month"].isin(months) &
+    df["District"].isin(districts) &
+    df["Psychologist"].isin(psychs)
+]
+
+# ========== KPIs ==========
+st.subheader("📊 Key Performance Indicators")
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Hours", round(filtered["Estimated Hours"].sum(), 1))
 col2.metric("Total Revenue", f"${filtered['Revenue'].sum():,.0f}")
 col3.metric("Gross Margin", f"${filtered['Margin'].sum():,.0f}")
 
-# --- Tabs for Deep Dives ---
+# ========== VISUALIZATION TABS ==========
 tab1, tab2, tab3, tab4 = st.tabs([
-    "Efficiency Over Time", "Revenue vs Cost by District", "Case Drilldown", "Scatter & Correlation"
+    "Efficiency Over Time", "Margins by District", "Case Drilldown", "Efficiency vs Profit"
 ])
 
 with tab1:
-    st.markdown("### 📅 Efficiency Over Time")
+    st.markdown("### ⏳ Average Hours per Case (Monthly)")
     eff = (
         filtered.groupby("Month")
         .agg(Total_Hours=("Estimated Hours", "sum"), Cases=("Case ID", "nunique"))
@@ -100,35 +90,35 @@ with tab1:
         .reset_index()
     )
     fig, ax = plt.subplots()
-    ax.plot(eff["Month"], eff["Hours_per_Case"], marker='o')
-    ax.set_title("Average Hours per Case")
+    sns.lineplot(data=eff, x="Month", y="Hours_per_Case", marker="o", ax=ax)
+    ax.set_ylabel("Hours per Case")
     st.pyplot(fig)
 
 with tab2:
-    st.markdown("### 🏫 Revenue, Cost, Margin by District & Month")
+    st.markdown("### 💰 Financials by District & Month")
     monthly = (
         filtered.groupby(["Month", "District"])
         .agg(Revenue=("Revenue", "sum"), Cost=("Estimated Cost", "sum"))
         .assign(Margin=lambda d: d["Revenue"] - d["Cost"])
-        .assign(Gross_Margin_Percent=lambda d: d["Margin"] / d["Revenue"] * 100)
+        .assign(Gross_Margin_Percent=lambda d: (d["Margin"] / d["Revenue"].replace(0, pd.NA)) * 100)
         .reset_index()
     )
-    selected_metric = st.selectbox("Metric", ["Revenue", "Cost", "Margin", "Gross_Margin_Percent"])
+    metric = st.selectbox("Choose Metric", ["Revenue", "Cost", "Margin", "Gross_Margin_Percent"])
     fig2, ax2 = plt.subplots(figsize=(12, 5))
     for district in monthly["District"].unique():
-        data = monthly[monthly["District"] == district]
-        ax2.plot(data["Month"], data[selected_metric], label=district, marker='o')
+        district_data = monthly[monthly["District"] == district]
+        ax2.plot(district_data["Month"], district_data[metric], marker="o", label=district)
+    ax2.set_title(f"{metric} by District Over Time")
     ax2.legend()
-    ax2.set_title(f"{selected_metric} by District")
     st.pyplot(fig2)
 
 with tab3:
-    st.markdown("### 🔍 Case Drilldown")
-    case = st.selectbox("Select Case ID", sorted(filtered["Case ID"].unique()))
-    st.dataframe(filtered[filtered["Case ID"] == case])
+    st.markdown("### 🔍 Case-Level Data")
+    selected_case = st.selectbox("Case ID", sorted(filtered["Case ID"].unique()))
+    st.dataframe(filtered[filtered["Case ID"] == selected_case])
 
 with tab4:
-    st.markdown("### 📉 Efficiency vs Margin")
+    st.markdown("### ⚖️ Hours vs Margin")
     scatter = (
         filtered.groupby("Case ID")
         .agg(Hours=("Estimated Hours", "sum"), Margin=("Margin", "sum"))
@@ -138,5 +128,5 @@ with tab4:
     ax3.scatter(scatter["Hours"], scatter["Margin"], alpha=0.6)
     ax3.set_xlabel("Hours")
     ax3.set_ylabel("Margin")
-    ax3.set_title("Case Hours vs Margin")
+    ax3.set_title("Efficiency vs Profitability")
     st.pyplot(fig3)
