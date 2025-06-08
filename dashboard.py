@@ -94,6 +94,10 @@ def load_and_process_data(quickbooks_file, gusto_file):
     
     return qb_df, gusto_df
 
+# Initialize session state for history if it doesn't exist
+if 'analysis_history' not in st.session_state:
+    st.session_state.analysis_history = []
+
 # Load and process the data
 qb_df, gusto_df = load_and_process_data(quickbooks_file, gusto_file)
 
@@ -694,3 +698,38 @@ if gusto_df is not None and not filtered_gusto.empty:
 
 else:
     st.info("Upload Gusto time tracking data to see cost breakdown and efficiency analysis by psychologist.")
+
+# After processing data and calculating metrics, save to history
+if qb_df is not None and not qb_df.empty:
+    # Create history entry
+    history_entry = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'total_revenue': total_revenue,
+        'total_evals': total_evals,
+        'avg_revenue_per_eval': avg_revenue_per_eval,
+        'districts': list(selected_districts),
+        'date_range': [date_range[0].strftime('%Y-%m-%d'), date_range[1].strftime('%Y-%m-%d')],
+        'monthly_data': monthly_data.reset_index() if 'monthly_data' in locals() else None,
+    }
+    
+    if gusto_df is not None and not gusto_df.empty:
+        history_entry.update({
+            'total_cost': total_cost,
+            'gross_margin': gross_margin,
+            'margin_percent': margin_percent,
+            'psychologists': list(selected_psychs)
+        })
+    else:
+        history_entry.update({
+            'total_cost': 0,
+            'gross_margin': total_revenue,
+            'margin_percent': 100,
+            'psychologists': []
+        })
+    
+    # Add to history
+    st.session_state.analysis_history.append(history_entry)
+    
+    # Add link to history page
+    st.sidebar.markdown("---")
+    st.sidebar.info("📚 View all analysis runs in the [Results History](/Results_History) page")
