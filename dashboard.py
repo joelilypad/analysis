@@ -668,7 +668,7 @@ if gusto_df is not None and not filtered_gusto.empty:
     
     task_dist_df = pd.DataFrame(task_dist_data)
     
-    # Create heatmap
+    # Create heatmap with adjusted height
     fig = px.imshow(
         task_dist_df.pivot(index='Psychologist', columns='Task', values='Percentage'),
         labels=dict(x='Task', y='Psychologist', color='% of Time'),
@@ -676,9 +676,18 @@ if gusto_df is not None and not filtered_gusto.empty:
         color_continuous_scale='RdYlBu_r'
     )
     
+    # Adjust layout to fit all psychologists
     fig.update_layout(
         title='Time Distribution Across Tasks',
-        height=400
+        height=max(400, len(psych_efficiency) * 40),  # Dynamic height based on number of psychologists
+        margin=dict(t=50, b=50)  # Add some margin for better spacing
+    )
+    
+    # Update y-axis to show all psychologist names
+    fig.update_yaxes(
+        tickmode='array',
+        ticktext=psych_efficiency['Psychologist'].tolist(),
+        tickvals=list(range(len(psych_efficiency)))
     )
     
     st.plotly_chart(fig, use_container_width=True)
