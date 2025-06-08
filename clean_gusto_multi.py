@@ -522,23 +522,23 @@ def process_gusto_upload(uploaded_file):
             # If it's a file-like object (e.g. StreamlitUploadedFile)
             try:
                 # Try to read directly first
-                content = uploaded_file.read()
+                content = uploaded_file.getvalue()
                 if isinstance(content, bytes):
                     content = content.decode('utf-8')
-                # Reset file pointer for potential future reads
+            except:
                 try:
-                    uploaded_file.seek(0)
-                except:
-                    pass
-            except AttributeError:
-                # If read() doesn't work, try getvalue()
-                try:
-                    content = uploaded_file.getvalue()
+                    content = uploaded_file.read()
                     if isinstance(content, bytes):
                         content = content.decode('utf-8')
-                except AttributeError:
+                except:
                     # If both methods fail, try string conversion
                     content = str(uploaded_file)
+            
+            # Reset file pointer if possible
+            try:
+                uploaded_file.seek(0)
+            except:
+                pass
             
         # Process the data
         df = process_gusto_file(content)

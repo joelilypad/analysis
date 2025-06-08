@@ -74,45 +74,35 @@ with st.sidebar:
     gusto_data = load_latest_file("gusto")
     
     # QuickBooks file uploader
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        quickbooks_file = st.file_uploader(
-            "QuickBooks Financial Export (CSV)",
-            type="csv",
-            key="quickbooks_file",
-            help="Upload the QuickBooks sales/revenue export"
-        )
-    with col2:
-        if quickbooks_data is not None:
-            if st.button("Clear QuickBooks", key="clear_qb"):
-                clear_latest_file("quickbooks")
-                quickbooks_file = None
-                st.rerun()
+    quickbooks_file = st.file_uploader(
+        "QuickBooks Financial Export (CSV)",
+        type="csv",
+        key="quickbooks_file",
+        help="Upload the QuickBooks sales/revenue export"
+    )
     
     if quickbooks_file:
         save_latest_file(quickbooks_file, "quickbooks")
+        st.rerun()
+    elif quickbooks_data and not quickbooks_file:  # If file was cleared
+        clear_latest_file("quickbooks")
         st.rerun()
     elif quickbooks_data:  # Use saved data if available
         quickbooks_file = quickbooks_data
     
     # Gusto file uploader
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        gusto_file = st.file_uploader(
-            "Gusto Time Tracking Export (Optional, CSV)",
-            type="csv",
-            key="gusto_file",
-            help="Upload the raw Gusto contractor hours export (optional)"
-        )
-    with col2:
-        if gusto_data is not None:
-            if st.button("Clear Gusto", key="clear_gusto"):
-                clear_latest_file("gusto")
-                gusto_file = None
-                st.rerun()
+    gusto_file = st.file_uploader(
+        "Gusto Time Tracking Export (Optional, CSV)",
+        type="csv",
+        key="gusto_file",
+        help="Upload the raw Gusto contractor hours export (optional)"
+    )
     
     if gusto_file:
         save_latest_file(gusto_file, "gusto")
+        st.rerun()
+    elif gusto_data and not gusto_file:  # If file was cleared
+        clear_latest_file("gusto")
         st.rerun()
     elif gusto_data:  # Use saved data if available
         gusto_file = gusto_data
