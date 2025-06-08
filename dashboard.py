@@ -367,21 +367,28 @@ with col2:
     st.plotly_chart(fig, use_container_width=True)
     
 # Monthly trends
-st.subheader("Monthly Trends")
+st.subheader("Monthly Analysis")
+
+# Calculate monthly metrics
+monthly_data = pd.DataFrame({
+    'Revenue': filtered_qb.groupby('Month')['Amount'].sum(),
+    'Evaluations': filtered_qb[eval_mask].groupby(['Month', 'Invoice', 'Student Initials'])['Service Type'].count().reset_index().groupby('Month').size(),
+    'Avg Revenue Per Eval': filtered_qb.groupby('Month')['Amount'].sum() / 
+        filtered_qb[eval_mask].groupby(['Month', 'Invoice', 'Student Initials'])['Service Type'].count().reset_index().groupby('Month').size()
+})
+
+# Display monthly metrics
 col1, col2 = st.columns(2)
 
 with col1:
     # Monthly revenue by service date
-    monthly_revenue = filtered_qb.groupby('Month')['Amount'].sum()
-    
-    # Create line chart
     fig = go.Figure(data=[
-        go.Scatter(
-            x=monthly_revenue.index.astype(str),
-            y=monthly_revenue.values,
-            mode='lines+markers',
-            text=[f"${x:,.0f}" for x in monthly_revenue.values],
-            textposition='top center',
+        go.Bar(
+            x=monthly_data.index.astype(str),
+            y=monthly_data['Revenue'],
+            name='Revenue',
+            text=[f"${x:,.0f}" for x in monthly_data['Revenue']],
+            textposition='auto',
         )
     ])
     
@@ -397,16 +404,13 @@ with col1:
 
 with col2:
     # Monthly evaluations by service date
-    monthly_evals = filtered_qb[eval_mask].groupby(['Month', 'Invoice', 'Student Initials'])['Service Type'].count().reset_index().groupby('Month').size()
-    
-    # Create line chart
     fig = go.Figure(data=[
-        go.Scatter(
-            x=monthly_evals.index.astype(str),
-            y=monthly_evals.values,
-            mode='lines+markers',
-            text=monthly_evals.values,
-            textposition='top center',
+        go.Bar(
+            x=monthly_data.index.astype(str),
+            y=monthly_data['Evaluations'],
+            name='Evaluations',
+            text=monthly_data['Evaluations'],
+            textposition='auto',
         )
     ])
     
@@ -420,59 +424,106 @@ with col2:
     
     st.plotly_chart(fig, use_container_width=True)
 
-# Add invoice timing analysis
-st.subheader("Invoice Timing Analysis")
-invoice_lag = filtered_qb[eval_mask].copy()
-invoice_lag['Days to Invoice'] = (invoice_lag['Invoice Date'] - invoice_lag['Date']).dt.days
-
-col1, col2 = st.columns(2)
-
-with col1:
-    # Average days to invoice by district
-    avg_lag_by_district = invoice_lag.groupby('District')['Days to Invoice'].mean().sort_values(ascending=True)
-    
-    fig = go.Figure(data=[
-        go.Bar(
-            x=avg_lag_by_district.values,
-            y=avg_lag_by_district.index,
-            orientation='h',
-            text=[f"{x:.1f} days" for x in avg_lag_by_district.values],
-            textposition='auto',
-        )
-    ])
-    
-    fig.update_layout(
-        title="Average Days from Service to Invoice by District",
-        xaxis_title="Days",
-        showlegend=False,
-        height=400
+# Monthly revenue per evaluation
+fig = go.Figure(data=[
+    go.Bar(
+        x=monthly_data.index.astype(str),
+        y=monthly_data['Avg Revenue Per Eval'],
+        text=[f"${x:,.0f}" for x in monthly_data['Avg Revenue Per Eval']],
+        textposition='auto',
     )
-    
-    st.plotly_chart(fig, use_container_width=True)
+])
 
-with col2:
-    # Monthly average days to invoice
-    avg_lag_by_month = invoice_lag.groupby('Month')['Days to Invoice'].mean()
-    
-    fig = go.Figure(data=[
-        go.Scatter(
-            x=avg_lag_by_month.index.astype(str),
-            y=avg_lag_by_month.values,
-            mode='lines+markers',
-            text=[f"{x:.1f} days" for x in avg_lag_by_month.values],
-            textposition='top center',
-        )
-    ])
-    
-    fig.update_layout(
-        title="Average Days from Service to Invoice by Month",
-        xaxis_title="Month",
-        yaxis_title="Days",
-        showlegend=False,
-        height=400
+fig.update_layout(
+    title="Average Revenue per Evaluation by Month",
+    xaxis_title="Month",
+    yaxis_title="Revenue per Evaluation ($)",
+    showlegend=False,
+    height=400
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# Service type breakdown by month
+st.subheader("Service Type Analysis")
+
+# Calculate service type metrics
+service_type_data = filtered_qb.groupby(['Month', 'Service Type']).agg({
+    'Amount': 'sum',
+    'Student Initials': 'nunique'
+}).reset_index()
+
+# Pivot for stacked bar chart
+monthly_service_types = pd.pivot_table(
+    service_type_data,
+    index='Month',
+    columns='Service Type',
+    values='Amount',
+    aggfunc='sum'
+).fillna(0)
+
+# Create stacked bar chart
+fig = go.Figure()
+for service_type in monthly_service_types.columns:
+    fig.add_trace(go.Bar(
+        name=service_type,
+        x=monthly_service_types.index.astype(str),
+        y=monthly_service_types[service_type],
+        text=[f"${x:,.0f}" for x in monthly_service_types[service_type]],
+        textposition='auto',
+    ))
+
+fig.update_layout(
+    title="Monthly Revenue by Service Type",
+    xaxis_title="Month",
+    yaxis_title="Revenue ($)",
+    barmode='stack',
+    height=500,
+    showlegend=True,
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
     )
-    
-    st.plotly_chart(fig, use_container_width=True)
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# Show detailed monthly breakdown
+st.subheader("Monthly Service Type Breakdown")
+monthly_breakdown = pd.pivot_table(
+    filtered_qb,
+    index=['Month', 'Service Type'],
+    values=['Amount', 'Student Initials'],
+    aggfunc={
+        'Amount': 'sum',
+        'Student Initials': 'nunique'
+    }
+).reset_index()
+
+monthly_breakdown.columns = ['Month', 'Service Type', 'Revenue', 'Unique Students']
+monthly_breakdown['Average Revenue/Student'] = monthly_breakdown['Revenue'] / monthly_breakdown['Unique Students']
+
+# Format the table
+monthly_breakdown['Revenue'] = monthly_breakdown['Revenue'].map('${:,.2f}'.format)
+monthly_breakdown['Average Revenue/Student'] = monthly_breakdown['Average Revenue/Student'].map('${:,.2f}'.format)
+
+st.dataframe(
+    monthly_breakdown.sort_values(['Month', 'Service Type']),
+    use_container_width=True
+)
+
+# Show the raw monthly data in a table
+st.subheader("Monthly Summary")
+monthly_table = pd.DataFrame({
+    'Month': monthly_data.index.astype(str),
+    'Total Revenue': [f"${x:,.2f}" for x in monthly_data['Revenue']],
+    'Total Evaluations': monthly_data['Evaluations'],
+    'Avg Revenue/Eval': [f"${x:,.2f}" for x in monthly_data['Avg Revenue Per Eval']],
+})
+st.dataframe(monthly_table.set_index('Month'), use_container_width=True)
 
 # ========== TIME TRACKING ANALYSIS ==========
 if gusto_df is not None:

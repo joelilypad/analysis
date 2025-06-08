@@ -29,11 +29,13 @@ def extract_service_components(description):
         else:
             components.append('Full Evaluation')
     
-    # Additional components
-    if 'academic' in description and 'assessment' in description:
-        components.append('Academic Testing')
+    # Additional components - these are now separate services
+    if ('academic' in description and 'assessment' in description) or ('academic' in description and 'testing' in description):
+        if not any(c in components for c in ['Full Evaluation', 'Cognitive Only', 'Educational Only', 'Bilingual Evaluation', 'Multilingual Evaluation', 'Haitian Creole Evaluation', 'Spanish Evaluation']):
+            components.append('Academic Testing (Add-on)')
     if 'iep' in description and ('meeting' in description or 'presentation' in description):
-        components.append('IEP Meeting')
+        if not any(c in components for c in ['Full Evaluation', 'Cognitive Only', 'Educational Only', 'Bilingual Evaluation', 'Multilingual Evaluation', 'Haitian Creole Evaluation', 'Spanish Evaluation']):
+            components.append('IEP Meeting (Add-on)')
     if 'rating scales' in description:
         components.append('Rating Scales')
     if 'set-up' in description or 'setup' in description:
@@ -64,7 +66,7 @@ def extract_student_info(description):
     if components:
         if 'Multilingual Evaluation' in components:
             service_type = 'Multilingual Evaluation'
-        elif any(c for c in components if 'Bilingual' in c):
+        elif any(c for c in components if 'Bilingual' in c and 'Evaluation' in c):
             service_type = 'Bilingual Evaluation'
         elif 'Cognitive Only' in components:
             service_type = 'Cognitive Only'
@@ -72,10 +74,10 @@ def extract_student_info(description):
             service_type = 'Educational Only'
         elif 'Full Evaluation' in components:
             service_type = 'Full Evaluation'
-        elif 'Academic Testing' in components:
-            service_type = 'Academic Testing'
-        elif 'IEP Meeting' in components:
-            service_type = 'IEP Meeting'
+        elif 'Academic Testing (Add-on)' in components:
+            service_type = 'Academic Testing (Add-on)'
+        elif 'IEP Meeting (Add-on)' in components:
+            service_type = 'IEP Meeting (Add-on)'
         elif 'Remote Setup' in components:
             service_type = 'Setup Fee'
     
