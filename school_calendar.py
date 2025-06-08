@@ -140,6 +140,10 @@ def generate_school_day_analysis(df):
     
     # Convert monthly metrics to DataFrame with month as column
     monthly_df = monthly_metrics.reset_index()
+    # Ensure the Month column exists and convert to string
+    if isinstance(monthly_df.index, pd.PeriodIndex):
+        monthly_df = monthly_df.reset_index()
+    monthly_df = monthly_df.rename(columns={'index': 'Month'})
     monthly_df['Month'] = monthly_df['Month'].astype(str)
     
     return overall_metrics, monthly_df 

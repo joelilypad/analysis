@@ -256,16 +256,17 @@ if gusto_df is not None:
     ))
     
     fig.update_layout(
-        title="Monthly Revenue, Cost, and Gross Margin %",
+        title="Monthly Revenue, Cost, and Margin",
         xaxis_title="Month",
         yaxis_title="Amount ($)",
         yaxis2=dict(
-            title="Gross Margin %",
+            title="Margin %",
             overlaying='y',
             side='right',
-            range=[0, max(monthly_data['Gross Margin %']) * 1.2]  # Give some headroom
+            range=[0, 100]
         ),
-        height=400,
+        barmode='group',
+        height=500,
         showlegend=True,
         legend=dict(
             orientation="h",
@@ -273,8 +274,7 @@ if gusto_df is not None:
             y=1.02,
             xanchor="right",
             x=1
-        ),
-        barmode='group'
+        )
     )
     
     st.plotly_chart(fig, use_container_width=True)
