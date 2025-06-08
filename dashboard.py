@@ -190,12 +190,13 @@ qb_df, gusto_df = load_and_process_data(quickbooks_file, gusto_file)
 # ========== FILTERS ==========
 st.sidebar.header("🔎 Filters")
 
-# Date range filter - use QuickBooks dates
+# Date range filter - use service dates
 date_range = st.sidebar.date_input(
-    "Date Range",
+    "Service Date Range",
     value=(qb_df['Date'].min(), qb_df['Date'].max()),
     min_value=qb_df['Date'].min(),
-    max_value=qb_df['Date'].max()
+    max_value=qb_df['Date'].max(),
+    help="Filter by when evaluations were actually completed (service date)"
 )
 
 # District filter from QuickBooks data
@@ -232,6 +233,7 @@ if gusto_df is not None:
 
 # ========== FINANCIAL METRICS ==========
 st.header("💰 Financial Performance")
+st.info("All metrics are now based on service dates (when evaluations were completed) rather than invoice dates.")
 
 # Calculate financial KPIs from QuickBooks data
 total_revenue = filtered_qb['Amount'].sum()
@@ -369,7 +371,7 @@ st.subheader("Monthly Trends")
 col1, col2 = st.columns(2)
 
 with col1:
-    # Monthly revenue
+    # Monthly revenue by service date
     monthly_revenue = filtered_qb.groupby('Month')['Amount'].sum()
     
     # Create line chart
@@ -384,7 +386,7 @@ with col1:
     ])
     
     fig.update_layout(
-        title="Monthly Revenue",
+        title="Monthly Revenue (by Service Date)",
         xaxis_title="Month",
         yaxis_title="Revenue ($)",
         showlegend=False,
@@ -394,7 +396,7 @@ with col1:
     st.plotly_chart(fig, use_container_width=True)
 
 with col2:
-    # Monthly evaluations
+    # Monthly evaluations by service date
     monthly_evals = filtered_qb[eval_mask].groupby(['Month', 'Invoice', 'Student Initials'])['Service Type'].count().reset_index().groupby('Month').size()
     
     # Create line chart
@@ -409,9 +411,63 @@ with col2:
     ])
     
     fig.update_layout(
-        title="Monthly Evaluations",
+        title="Monthly Evaluations (by Service Date)",
         xaxis_title="Month",
         yaxis_title="Number of Evaluations",
+        showlegend=False,
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+# Add invoice timing analysis
+st.subheader("Invoice Timing Analysis")
+invoice_lag = filtered_qb[eval_mask].copy()
+invoice_lag['Days to Invoice'] = (invoice_lag['Invoice Date'] - invoice_lag['Date']).dt.days
+
+col1, col2 = st.columns(2)
+
+with col1:
+    # Average days to invoice by district
+    avg_lag_by_district = invoice_lag.groupby('District')['Days to Invoice'].mean().sort_values(ascending=True)
+    
+    fig = go.Figure(data=[
+        go.Bar(
+            x=avg_lag_by_district.values,
+            y=avg_lag_by_district.index,
+            orientation='h',
+            text=[f"{x:.1f} days" for x in avg_lag_by_district.values],
+            textposition='auto',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Average Days from Service to Invoice by District",
+        xaxis_title="Days",
+        showlegend=False,
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+with col2:
+    # Monthly average days to invoice
+    avg_lag_by_month = invoice_lag.groupby('Month')['Days to Invoice'].mean()
+    
+    fig = go.Figure(data=[
+        go.Scatter(
+            x=avg_lag_by_month.index.astype(str),
+            y=avg_lag_by_month.values,
+            mode='lines+markers',
+            text=[f"{x:.1f} days" for x in avg_lag_by_month.values],
+            textposition='top center',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Average Days from Service to Invoice by Month",
+        xaxis_title="Month",
+        yaxis_title="Days",
         showlegend=False,
         height=400
     )

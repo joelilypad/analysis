@@ -137,8 +137,12 @@ def process_quickbooks_file(file_content):
                 if pd.notna(customer):
                     current_customer = customer
                 
+                # Use service date if available, otherwise fall back to transaction date
+                date = pd.to_datetime(row['Service date']) if pd.notna(row.get('Service date')) else pd.to_datetime(row['Transaction date'])
+                
                 record = {
-                    'Date': pd.to_datetime(row['Transaction date']),
+                    'Date': date,
+                    'Invoice Date': pd.to_datetime(row['Transaction date']),
                     'Customer': customer,
                     'Invoice': row['Num'],
                     'Service': row['Product/Service full name'],
@@ -163,6 +167,7 @@ def process_quickbooks_file(file_content):
         # Add derived columns
         df['Month'] = df['Date'].dt.to_period('M')
         df['Week'] = df['Date'].dt.to_period('W')
+        df['Invoice Month'] = df['Invoice Date'].dt.to_period('M')
         
         # Group related services by invoice and student
         df['Service Bundle'] = df.apply(lambda x: 
