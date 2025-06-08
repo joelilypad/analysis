@@ -240,12 +240,43 @@ total_revenue = filtered_qb['Amount'].sum()
 
 # Count unique evaluations (excluding add-on services)
 eval_mask = (
-    filtered_qb['Service Type'].str.contains('Evaluation', na=False) &
-    ~filtered_qb['Service Type'].str.contains('Academic Achievement Testing|IEP Meeting|Remote Setup', na=False)
+    (filtered_qb['Service Type'].isin([
+        'Full Evaluation',
+        'Cognitive Only',
+        'Educational Only',
+        'Bilingual Evaluation',
+        'Spanish Evaluation',
+        'Haitian Creole Evaluation',
+        'Multilingual Evaluation'
+    ])) |
+    (filtered_qb['Service Type'].str.contains('Evaluation', na=False) & 
+     ~filtered_qb['Service Type'].str.contains('Academic|IEP|Setup|Remote', na=False))
 )
+
+# Debug service types
+st.write("### Service Type Analysis")
+service_type_counts = filtered_qb.groupby('Service Type').agg({
+    'Amount': 'sum',
+    'Student Initials': 'nunique',
+    'Evaluation Number': 'nunique'
+}).reset_index()
+
+st.write("Service Types and Counts:")
+st.dataframe(service_type_counts)
 
 # Count evaluations by evaluation number within each district
 total_evals = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().shape[0]
+
+# Debug evaluation counts
+st.write("### Evaluation Number Analysis")
+eval_counts = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().reset_index()
+st.write("Evaluation Numbers by District:")
+st.dataframe(eval_counts)
+
+# Show raw evaluation data for verification
+st.write("### Raw Evaluation Data")
+st.write("Showing all rows that are counted as evaluations:")
+st.dataframe(filtered_qb[eval_mask][['Date', 'District', 'Service Type', 'Student Initials', 'Evaluation Number', 'Description']])
 
 avg_revenue_per_eval = total_revenue / total_evals if total_evals > 0 else 0
 

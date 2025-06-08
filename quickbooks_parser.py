@@ -21,13 +21,16 @@ def extract_service_components(description):
             components.append('Spanish Evaluation')
         else:
             components.append('Bilingual Evaluation')
-    elif 'psychoeducational evaluation' in description:
+    elif any(term in description for term in ['psychoeducational evaluation', 'psychoed eval', 'psychoed evaluation', 'psychological eval', 'psychological evaluation']):
         if 'cognitive only' in description:
             components.append('Cognitive Only')
         elif 'educational only' in description:
             components.append('Educational Only')
         else:
             components.append('Full Evaluation')
+    elif 'evaluation' in description and not any(x in description for x in ['academic', 'iep', 'set-up', 'setup']):
+        # Catch any other evaluations that don't match the above patterns
+        components.append('Full Evaluation')
     
     # Additional components - these are now separate services
     if ('academic' in description and 'assessment' in description) or ('academic' in description and 'testing' in description):
