@@ -140,8 +140,21 @@ eval_mask = (
     ~filtered_qb['Service Type'].str.contains('Academic Testing|IEP Meeting|Setup|Remote', na=False, case=False)
 )
 
+# Debug information
+st.sidebar.markdown("### Debug Info")
+st.sidebar.write("Total rows:", len(filtered_qb))
+st.sidebar.write("Rows after eval mask:", len(filtered_qb[eval_mask]))
+
+# Show unique combinations
+eval_counts = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number', 'Service Type'])['Amount'].count().reset_index()
+st.sidebar.write("Unique District-Eval-Service combinations:", len(eval_counts))
+
 # Count evaluations by evaluation number within each district
 total_evals = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().shape[0]
+
+# Show the actual grouping
+eval_details = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().reset_index()
+st.sidebar.write("Evaluation counts by district:", eval_details.groupby('District')['Evaluation Number'].count().to_dict())
 
 avg_revenue_per_eval = total_revenue / total_evals if total_evals > 0 else 0
 
@@ -571,5 +584,104 @@ if gusto_df is not None and not filtered_gusto.empty:
     display_costs['Cost'] = display_costs['Cost'].map('${:,.2f}'.format)
     
     st.dataframe(display_costs, use_container_width=True)
+
+    # Add Psychologist Efficiency Analysis
+    st.markdown("### 👥 Psychologist Efficiency Analysis")
+    st.info("""
+    This analysis shows how efficiently each psychologist completes evaluations, including:
+    - Average hours per evaluation
+    - Cost per evaluation
+    - Number of evaluations completed
+    - Distribution of time across different tasks
+    """)
+
+    # Get evaluation data
+    eval_data = filtered_qb[eval_mask].copy()
+    
+    # Extract student initials and evaluation numbers
+    student_evals = eval_data[['Student Initials', 'Evaluation Number', 'District', 'Date']].drop_duplicates()
+    
+    # Calculate psychologist metrics
+    psych_metrics = []
+    
+    for psych in filtered_gusto['Psychologist'].unique():
+        psych_data = filtered_gusto[filtered_gusto['Psychologist'] == psych]
+        
+        # Calculate metrics
+        total_hours = psych_data['Hours'].sum()
+        total_cost = psych_data['Cost'].sum()
+        
+        # Count evaluations this psychologist worked on
+        psych_students = psych_data['Student Initials'].nunique()
+        
+        # Get task breakdown
+        task_hours = psych_data.groupby('Standardized Task')['Hours'].sum()
+        
+        # Calculate efficiency metrics
+        metrics = {
+            'Psychologist': psych,
+            'Total Hours': total_hours,
+            'Total Cost': total_cost,
+            'Students Served': psych_students,
+            'Avg Hours per Student': total_hours / psych_students if psych_students > 0 else 0,
+            'Avg Cost per Student': total_cost / psych_students if psych_students > 0 else 0,
+        }
+        
+        # Add task percentages
+        for task in task_hours.index:
+            metrics[f'{task} %'] = (task_hours[task] / total_hours * 100) if total_hours > 0 else 0
+            
+        psych_metrics.append(metrics)
+    
+    # Convert to DataFrame
+    psych_efficiency = pd.DataFrame(psych_metrics)
+    
+    # Format for display
+    display_efficiency = psych_efficiency.copy()
+    display_efficiency['Total Hours'] = display_efficiency['Total Hours'].map('{:,.1f}'.format)
+    display_efficiency['Total Cost'] = display_efficiency['Total Cost'].map('${:,.2f}'.format)
+    display_efficiency['Avg Hours per Student'] = display_efficiency['Avg Hours per Student'].map('{:,.1f}'.format)
+    display_efficiency['Avg Cost per Student'] = display_efficiency['Avg Cost per Student'].map('${:,.2f}'.format)
+    
+    # Format percentages
+    pct_cols = [col for col in display_efficiency.columns if col.endswith('%')]
+    for col in pct_cols:
+        display_efficiency[col] = display_efficiency[col].map('{:,.1f}%'.format)
+    
+    # Display the efficiency metrics
+    st.dataframe(display_efficiency.sort_values('Students Served', ascending=False), use_container_width=True)
+    
+    # Add visualization of task distribution
+    st.subheader("Task Distribution by Psychologist")
+    
+    # Prepare data for visualization
+    task_dist_data = []
+    for _, row in psych_efficiency.iterrows():
+        psych = row['Psychologist']
+        for col in pct_cols:
+            task = col.replace(' %', '')
+            task_dist_data.append({
+                'Psychologist': psych,
+                'Task': task,
+                'Percentage': row[col]
+            })
+    
+    task_dist_df = pd.DataFrame(task_dist_data)
+    
+    # Create heatmap
+    fig = px.imshow(
+        task_dist_df.pivot(index='Psychologist', columns='Task', values='Percentage'),
+        labels=dict(x='Task', y='Psychologist', color='% of Time'),
+        aspect='auto',
+        color_continuous_scale='RdYlBu_r'
+    )
+    
+    fig.update_layout(
+        title='Time Distribution Across Tasks',
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
 else:
-    st.info("Upload Gusto time tracking data to see cost breakdown by psychologist.")
+    st.info("Upload Gusto time tracking data to see cost breakdown and efficiency analysis by psychologist.")
