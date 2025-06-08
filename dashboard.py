@@ -522,6 +522,146 @@ if gusto_df is not None:
     
     st.plotly_chart(fig, use_container_width=True)
 
+# After the existing monthly analysis section, before Service Type Analysis
+st.header("📊 Student-Based Margin Analysis")
+st.info("This analysis tracks the full cost of each evaluation across months, matching revenue with all associated costs even if they span multiple months.")
+
+if gusto_df is not None:
+    # Group revenue by student and invoice date
+    student_revenue = filtered_qb[eval_mask].groupby(['Student Initials', 'Evaluation Number', 'Month'])['Amount'].sum().reset_index()
+    student_revenue = student_revenue.rename(columns={'Month': 'Revenue Month', 'Amount': 'Revenue'})
+    
+    # Group costs by student across all months
+    student_costs = filtered_gusto.groupby(['Student Initials', 'Evaluation Number', 'Month'])['Cost'].sum().reset_index()
+    student_costs = student_costs.rename(columns={'Month': 'Cost Month', 'Cost': 'Monthly Cost'})
+    
+    # Create a full analysis of students, their revenue, and costs across months
+    student_analysis = pd.merge(
+        student_revenue,
+        student_costs,
+        on=['Student Initials', 'Evaluation Number'],
+        how='outer'
+    )
+    
+    # Calculate total cost per student
+    total_student_costs = student_costs.groupby(['Student Initials', 'Evaluation Number'])['Monthly Cost'].sum().reset_index()
+    total_student_costs = total_student_costs.rename(columns={'Monthly Cost': 'Total Cost'})
+    
+    # Add total costs to the analysis
+    student_analysis = pd.merge(
+        student_analysis,
+        total_student_costs,
+        on=['Student Initials', 'Evaluation Number'],
+        how='left'
+    )
+    
+    # Calculate margins
+    student_analysis['Margin'] = student_analysis['Revenue'] - student_analysis['Total Cost']
+    student_analysis['Margin %'] = (student_analysis['Margin'] / student_analysis['Revenue'] * 100).round(1)
+    
+    # Calculate monthly aggregates based on revenue month
+    monthly_student_margins = student_analysis.groupby('Revenue Month').agg({
+        'Revenue': 'sum',
+        'Total Cost': 'sum',
+        'Student Initials': 'nunique'
+    }).reset_index()
+    
+    monthly_student_margins['Margin'] = monthly_student_margins['Revenue'] - monthly_student_margins['Total Cost']
+    monthly_student_margins['Margin %'] = (monthly_student_margins['Margin'] / monthly_student_margins['Revenue'] * 100).round(1)
+    monthly_student_margins = monthly_student_margins.rename(columns={'Student Initials': 'Unique Students'})
+    
+    # Create visualization
+    fig = go.Figure()
+    
+    # Add bars for revenue and cost
+    fig.add_trace(go.Bar(
+        x=monthly_student_margins['Revenue Month'].astype(str),
+        y=monthly_student_margins['Revenue'],
+        name='Revenue',
+        text=[f"${x:,.0f}" for x in monthly_student_margins['Revenue']],
+        textposition='auto',
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=monthly_student_margins['Revenue Month'].astype(str),
+        y=monthly_student_margins['Total Cost'],
+        name='Total Cost (All Months)',
+        text=[f"${x:,.0f}" for x in monthly_student_margins['Total Cost']],
+        textposition='auto',
+    ))
+    
+    # Add line for margin percentage
+    fig.add_trace(go.Scatter(
+        x=monthly_student_margins['Revenue Month'].astype(str),
+        y=monthly_student_margins['Margin %'],
+        name='True Margin %',
+        yaxis='y2',
+        text=[f"{x:.1f}%" for x in monthly_student_margins['Margin %']],
+        textposition='top center',
+        mode='lines+markers+text',
+        line=dict(width=2),
+        marker=dict(size=8)
+    ))
+    
+    fig.update_layout(
+        title="Monthly Revenue vs Total Evaluation Costs (Including Future Months)",
+        xaxis_title="Revenue Month",
+        yaxis_title="Amount ($)",
+        yaxis2=dict(
+            title="Margin %",
+            overlaying='y',
+            side='right',
+            range=[0, max(monthly_student_margins['Margin %']) * 1.2]  # Give some headroom
+        ),
+        height=400,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        barmode='group'
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Show detailed monthly breakdown
+    st.subheader("Monthly Student-Based Analysis")
+    st.write("""
+    This table shows margins calculated by matching each student's revenue with their total evaluation costs, 
+    even if those costs extend into future months. This gives a more accurate picture of true efficiency gains.
+    """)
+    
+    # Format the table
+    display_table = monthly_student_margins.copy()
+    display_table['Revenue'] = display_table['Revenue'].map('${:,.2f}'.format)
+    display_table['Total Cost'] = display_table['Total Cost'].map('${:,.2f}'.format)
+    display_table['Margin'] = display_table['Margin'].map('${:,.2f}'.format)
+    display_table['Margin %'] = display_table['Margin %'].map('{:.1f}%'.format)
+    
+    st.dataframe(display_table.set_index('Revenue Month'), use_container_width=True)
+    
+    # Show individual student analysis
+    st.subheader("Individual Student Analysis")
+    st.write("""
+    This table shows the breakdown for each student, including their revenue month and all associated costs across months.
+    This helps identify cases where evaluation work extends significantly beyond the billing month.
+    """)
+    
+    # Format and display student details
+    student_details = student_analysis.copy()
+    student_details['Revenue'] = student_details['Revenue'].map('${:,.2f}'.format)
+    student_details['Monthly Cost'] = student_details['Monthly Cost'].map('${:,.2f}'.format)
+    student_details['Total Cost'] = student_details['Total Cost'].map('${:,.2f}'.format)
+    student_details['Margin'] = student_details['Margin'].map('${:,.2f}'.format)
+    student_details['Margin %'] = student_details['Margin %'].map('{:.1f}%'.format)
+    
+    st.dataframe(student_details.sort_values(['Revenue Month', 'Student Initials']), use_container_width=True)
+else:
+    st.warning("⚠️ Upload Gusto time tracking data to see student-based margin analysis.")
+
 # Service type breakdown by month
 st.subheader("Service Type Analysis")
 
