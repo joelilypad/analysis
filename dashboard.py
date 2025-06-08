@@ -133,17 +133,7 @@ total_revenue = filtered_qb['Amount'].sum()
 
 # Count unique evaluations (excluding add-on services)
 eval_mask = (
-    (filtered_qb['Service Type'].isin([
-        'Full Evaluation',
-        'Cognitive Only',
-        'Educational Only',
-        'Bilingual Evaluation',
-        'Spanish Evaluation',
-        'Haitian Creole Evaluation',
-        'Multilingual Evaluation'
-    ])) |
-    (filtered_qb['Service Type'].str.contains('Evaluation', na=False) & 
-     ~filtered_qb['Service Type'].str.contains('Academic|IEP|Setup|Remote', na=False))
+    ~filtered_qb['Service Type'].str.contains('Academic Testing|IEP Meeting|Setup|Remote', na=False, case=False)
 )
 
 # Count evaluations by evaluation number within each district
@@ -292,7 +282,15 @@ if gusto_df is not None:
 # Student-Based Margin Analysis
 if gusto_df is not None:
     st.header("📊 Student-Based Margin Analysis")
-    st.info("This analysis tracks the full cost of each evaluation across months, matching revenue with all associated costs even if they span multiple months.")
+    st.info("""
+    This analysis tracks the full cost of servicing each student across the entire evaluation process:
+    1. Initial planning
+    2. Student evaluation (billing point)
+    3. Report writing
+    4. Follow-up meetings
+    
+    Costs may span multiple months, but are matched to the student's evaluation revenue.
+    """)
 
     # Get evaluation data with student info
     eval_data = filtered_qb[eval_mask].copy()
@@ -359,7 +357,7 @@ if gusto_df is not None:
         fig.add_trace(go.Bar(
             x=monthly_student_margins['Service Month'].astype(str),
             y=monthly_student_margins['Total Cost'],
-            name='Total Student Cost',
+            name='Total Cost',
             text=[f"${x:,.0f}" for x in monthly_student_margins['Total Cost']],
             textposition='auto',
         ))
@@ -368,7 +366,7 @@ if gusto_df is not None:
         fig.add_trace(go.Scatter(
             x=monthly_student_margins['Service Month'].astype(str),
             y=monthly_student_margins['Margin %'],
-            name='True Margin %',
+            name='Margin %',
             yaxis='y2',
             text=[f"{x:.1f}%" for x in monthly_student_margins['Margin %']],
             textposition='top center',
@@ -378,16 +376,17 @@ if gusto_df is not None:
         ))
         
         fig.update_layout(
-            title="Monthly Revenue vs Total Student Costs (by Service Date)",
+            title="Monthly Student-Based Revenue, Cost, and Margin",
             xaxis_title="Service Month",
             yaxis_title="Amount ($)",
             yaxis2=dict(
                 title="Margin %",
                 overlaying='y',
                 side='right',
-                range=[0, max(monthly_student_margins['Margin %']) * 1.2]  # Give some headroom
+                range=[0, 100]
             ),
-            height=400,
+            barmode='group',
+            height=500,
             showlegend=True,
             legend=dict(
                 orientation="h",
@@ -395,17 +394,15 @@ if gusto_df is not None:
                 y=1.02,
                 xanchor="right",
                 x=1
-            ),
-            barmode='group'
+            )
         )
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Show detailed monthly breakdown
-        st.subheader("Monthly Student-Based Analysis")
         st.write("""
         This table shows margins calculated by matching each student's revenue with their total costs, 
-        even if those costs extend into future months. This gives a more accurate picture of true efficiency gains.
+        even if those costs extend across multiple months. This gives a more accurate picture of the true cost
+        of servicing each student through the entire evaluation process.
         """)
         
         # Format the table
@@ -420,8 +417,10 @@ if gusto_df is not None:
         # Show individual student analysis
         st.subheader("Individual Student Analysis")
         st.write("""
-        This table shows the breakdown for each student, including their service month and all associated costs.
-        This helps identify cases where evaluation work extends beyond the service month.
+        This table shows the complete timeline for each student, including:
+        - When the evaluation was billed
+        - All associated costs across months (planning, testing, report writing, meetings)
+        - Total margin for the full evaluation process
         """)
         
         # Format and display student details
@@ -433,104 +432,6 @@ if gusto_df is not None:
         student_details['Margin %'] = student_details['Margin %'].map('{:.1f}%'.format)
         
         st.dataframe(student_details.sort_values(['Service Month', 'Student Initials']), use_container_width=True)
-
-# Service type breakdown by month
-st.header("📊 Service Analysis")
-
-# Revenue by service type
-service_revenue = filtered_qb.groupby('Service Type')['Amount'].sum().sort_values(ascending=True)
-
-# Create bar chart
-fig = go.Figure(data=[
-    go.Bar(
-        x=service_revenue.values,
-        y=service_revenue.index,
-        orientation='h',
-        text=[f"${x:,.0f}" for x in service_revenue.values],
-        textposition='auto',
-    )
-])
-
-fig.update_layout(
-    title="Revenue by Service Type",
-    xaxis_title="Revenue ($)",
-    showlegend=False,
-    height=400
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# Service bundle analysis
-bundle_revenue = filtered_qb.groupby('Service Bundle')['Amount'].sum().sort_values(ascending=True)
-
-# Create bar chart
-fig = go.Figure(data=[
-    go.Bar(
-        x=bundle_revenue.values,
-        y=bundle_revenue.index,
-        orientation='h',
-        text=[f"${x:,.0f}" for x in bundle_revenue.values],
-        textposition='auto',
-    )
-])
-
-fig.update_layout(
-    title="Revenue by Service Bundle",
-    xaxis_title="Revenue ($)",
-    showlegend=False,
-    height=400
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# District Analysis
-st.header("📍 District Analysis")
-
-# Revenue by district
-district_revenue = filtered_qb.groupby('District')['Amount'].sum().sort_values(ascending=True)
-
-# Create bar chart
-fig = go.Figure(data=[
-    go.Bar(
-        x=district_revenue.values,
-        y=district_revenue.index,
-        orientation='h',
-        text=[f"${x:,.0f}" for x in district_revenue.values],
-        textposition='auto',
-    )
-])
-
-fig.update_layout(
-    title="Revenue by District",
-    xaxis_title="Revenue ($)",
-    showlegend=False,
-    height=400
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# Evaluations by district
-district_evals = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().reset_index().groupby('District').size().sort_values(ascending=True)
-
-# Create bar chart
-fig = go.Figure(data=[
-    go.Bar(
-        x=district_evals.values,
-        y=district_evals.index,
-        orientation='h',
-        text=district_evals.values,
-        textposition='auto',
-    )
-])
-
-fig.update_layout(
-    title="Evaluations by District",
-    xaxis_title="Number of Evaluations",
-    showlegend=False,
-    height=400
-)
-
-st.plotly_chart(fig, use_container_width=True)
 
 # After the District Analysis section, add School Day Analysis
 st.header("📅 School Day Analysis")
