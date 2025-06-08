@@ -16,120 +16,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ========== CUSTOM CSS ==========
-st.markdown("""
-<style>
-    /* Modern color scheme */
-    :root {
-        --primary: #2563eb;
-        --primary-dark: #1d4ed8;
-        --background: #ffffff;
-        --card: #f8fafc;
-        --card-foreground: #0f172a;
-        --popover: #ffffff;
-        --popover-foreground: #0f172a;
-        --muted: #f1f5f9;
-        --muted-foreground: #64748b;
-        --border: #e2e8f0;
-        --radius: 0.5rem;
-    }
-
-    /* Card-like containers */
-    [data-testid="stMetric"] {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 1rem;
-        box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
-    }
-    
-    /* Metric label styling */
-    [data-testid="stMetricLabel"] {
-        color: var(--muted-foreground);
-        font-size: 0.875rem !important;
-        font-weight: 500 !important;
-    }
-    
-    /* Metric value styling */
-    [data-testid="stMetricValue"] {
-        color: var(--card-foreground);
-        font-size: 1.875rem !important;
-        font-weight: 600 !important;
-    }
-    
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 1rem;
-        border-bottom: 1px solid var(--border);
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        padding: 0.5rem 1rem;
-        border-radius: var(--radius);
-        font-weight: 500;
-    }
-    
-    .stTabs [data-baseweb="tab-highlight"] {
-        background: var(--primary);
-    }
-    
-    /* Button styling */
-    .stButton > button {
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
-        padding: 0.5rem 1rem;
-        font-weight: 500;
-        transition: all 0.2s;
-    }
-    
-    .stButton > button:hover {
-        border-color: var(--primary);
-        color: var(--primary);
-    }
-    
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background: var(--background);
-        border-right: 1px solid var(--border);
-    }
-    
-    /* File uploader styling */
-    [data-testid="stFileUploader"] {
-        border: 2px dashed var(--border);
-        border-radius: var(--radius);
-        padding: 1rem;
-    }
-    
-    /* Chart container styling */
-    [data-testid="stPlotlyChart"] {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 1rem;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # ========== HEADER ==========
-st.markdown("""
-<div style='padding: 1rem 0; margin-bottom: 2rem;'>
-    <h1 style='margin: 0; font-size: 2.25rem; font-weight: 600; color: #0f172a;'>
-        🧠 Lilypad Analytics Dashboard
-    </h1>
-    <p style='margin-top: 0.5rem; color: #64748b; font-size: 1rem;'>
-        Analyze operational efficiency and financial performance for Lilypad Learning's evaluation services.
-    </p>
-</div>
-""", unsafe_allow_html=True)
+st.title("🧠 Lilypad Analytics Dashboard")
+st.write("Analyze operational efficiency and financial performance for Lilypad Learning's evaluation services.")
 
 # ========== FILE UPLOADS ==========
-st.sidebar.markdown("""
-<div style='margin-bottom: 2rem;'>
-    <h2 style='font-size: 1.25rem; font-weight: 600; color: #0f172a; margin-bottom: 1rem;'>
-        📁 Upload Your Files
-    </h2>
-</div>
-""", unsafe_allow_html=True)
+st.sidebar.header("📁 Upload Your Files")
 
 quickbooks_file = st.sidebar.file_uploader(
     "QuickBooks Financial Export (CSV)",
@@ -233,7 +125,7 @@ if gusto_df is not None:
 
 # ========== FINANCIAL METRICS ==========
 st.header("💰 Financial Performance")
-st.info("All metrics are now based on service dates (when evaluations were completed) rather than invoice dates.")
+st.info("All metrics are based on service dates (when evaluations were completed) rather than invoice dates.")
 
 # Calculate financial KPIs from QuickBooks data
 total_revenue = filtered_qb['Amount'].sum()
@@ -253,30 +145,8 @@ eval_mask = (
      ~filtered_qb['Service Type'].str.contains('Academic|IEP|Setup|Remote', na=False))
 )
 
-# Debug service types
-st.write("### Service Type Analysis")
-service_type_counts = filtered_qb.groupby('Service Type').agg({
-    'Amount': 'sum',
-    'Student Initials': 'nunique',
-    'Evaluation Number': 'nunique'
-}).reset_index()
-
-st.write("Service Types and Counts:")
-st.dataframe(service_type_counts)
-
 # Count evaluations by evaluation number within each district
 total_evals = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().shape[0]
-
-# Debug evaluation counts
-st.write("### Evaluation Number Analysis")
-eval_counts = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().reset_index()
-st.write("Evaluation Numbers by District:")
-st.dataframe(eval_counts)
-
-# Show raw evaluation data for verification
-st.write("### Raw Evaluation Data")
-st.write("Showing all rows that are counted as evaluations:")
-st.dataframe(filtered_qb[eval_mask][['Date', 'District', 'Service Type', 'Student Initials', 'Evaluation Number', 'Description']])
 
 avg_revenue_per_eval = total_revenue / total_evals if total_evals > 0 else 0
 
@@ -295,111 +165,7 @@ col3.metric("Avg Revenue/Eval", f"${avg_revenue_per_eval:,.2f}")
 if gusto_df is not None:
     col4.metric("Gross Margin", f"${gross_margin:,.2f}")
 
-# Service breakdown
-st.subheader("Service Analysis")
-col1, col2 = st.columns(2)
-
-with col1:
-    # Revenue by service type
-    service_revenue = filtered_qb.groupby('Service Type')['Amount'].sum().sort_values(ascending=True)
-    
-    # Create bar chart
-    fig = go.Figure(data=[
-        go.Bar(
-            x=service_revenue.values,
-            y=service_revenue.index,
-            orientation='h',
-            text=[f"${x:,.0f}" for x in service_revenue.values],
-            textposition='auto',
-        )
-    ])
-    
-    fig.update_layout(
-        title="Revenue by Service Type",
-        xaxis_title="Revenue ($)",
-        showlegend=False,
-        height=400
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-with col2:
-    # Service bundle analysis
-    bundle_revenue = filtered_qb.groupby('Service Bundle')['Amount'].sum().sort_values(ascending=True)
-    
-    # Create bar chart
-    fig = go.Figure(data=[
-        go.Bar(
-            x=bundle_revenue.values,
-            y=bundle_revenue.index,
-            orientation='h',
-            text=[f"${x:,.0f}" for x in bundle_revenue.values],
-            textposition='auto',
-        )
-    ])
-    
-    fig.update_layout(
-        title="Revenue by Service Bundle",
-        xaxis_title="Revenue ($)",
-        showlegend=False,
-        height=400
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-# District revenue analysis
-st.subheader("District Analysis")
-col1, col2 = st.columns(2)
-
-with col1:
-    # Revenue by district
-    district_revenue = filtered_qb.groupby('District')['Amount'].sum().sort_values(ascending=True)
-    
-    # Create bar chart
-    fig = go.Figure(data=[
-        go.Bar(
-            x=district_revenue.values,
-            y=district_revenue.index,
-            orientation='h',
-            text=[f"${x:,.0f}" for x in district_revenue.values],
-            textposition='auto',
-        )
-    ])
-    
-    fig.update_layout(
-        title="Revenue by District",
-        xaxis_title="Revenue ($)",
-        showlegend=False,
-        height=400
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-with col2:
-    # Evaluations by district
-    district_evals = filtered_qb[eval_mask].groupby(['District', 'Invoice', 'Student Initials'])['Service Type'].count().reset_index().groupby('District').size().sort_values(ascending=True)
-    
-    # Create bar chart
-    fig = go.Figure(data=[
-        go.Bar(
-            x=district_evals.values,
-            y=district_evals.index,
-            orientation='h',
-            text=district_evals.values,
-            textposition='auto',
-        )
-    ])
-    
-    fig.update_layout(
-        title="Evaluations by District",
-        xaxis_title="Number of Evaluations",
-        showlegend=False,
-        height=400
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-# Monthly trends
+# Monthly metrics
 st.subheader("Monthly Analysis")
 
 # Calculate monthly metrics
@@ -522,362 +288,245 @@ if gusto_df is not None:
     
     st.plotly_chart(fig, use_container_width=True)
 
-# After the existing monthly analysis section, before Service Type Analysis
-st.header("📊 Student-Based Margin Analysis")
-st.info("This analysis tracks the full cost of each evaluation across months, matching revenue with all associated costs even if they span multiple months.")
-
+# Student-Based Margin Analysis
 if gusto_df is not None:
-    # Group revenue by student and invoice date
-    student_revenue = filtered_qb[eval_mask].groupby(['Student Initials', 'Evaluation Number', 'Month'])['Amount'].sum().reset_index()
-    student_revenue = student_revenue.rename(columns={'Month': 'Revenue Month', 'Amount': 'Revenue'})
+    st.header("📊 Student-Based Margin Analysis")
+    st.info("This analysis tracks the full cost of each evaluation across months, matching revenue with all associated costs even if they span multiple months.")
+
+    # Get evaluation data with student info
+    eval_data = filtered_qb[eval_mask].copy()
     
-    # Group costs by student across all months
-    student_costs = filtered_gusto.groupby(['Student Initials', 'Evaluation Number', 'Month'])['Cost'].sum().reset_index()
-    student_costs = student_costs.rename(columns={'Month': 'Cost Month', 'Cost': 'Monthly Cost'})
+    # Group revenue by student and service date
+    student_revenue = eval_data.groupby(['Student Initials', 'Evaluation Number', 'Month'])['Amount'].sum().reset_index()
+    student_revenue = student_revenue.rename(columns={'Month': 'Service Month', 'Amount': 'Revenue'})
     
-    # Create a full analysis of students, their revenue, and costs across months
-    student_analysis = pd.merge(
-        student_revenue,
-        student_costs,
-        on=['Student Initials', 'Evaluation Number'],
-        how='outer'
-    )
-    
-    # Calculate total cost per student
-    total_student_costs = student_costs.groupby(['Student Initials', 'Evaluation Number'])['Monthly Cost'].sum().reset_index()
-    total_student_costs = total_student_costs.rename(columns={'Monthly Cost': 'Total Cost'})
-    
-    # Add total costs to the analysis
-    student_analysis = pd.merge(
-        student_analysis,
-        total_student_costs,
-        on=['Student Initials', 'Evaluation Number'],
-        how='left'
-    )
-    
-    # Calculate margins
-    student_analysis['Margin'] = student_analysis['Revenue'] - student_analysis['Total Cost']
-    student_analysis['Margin %'] = (student_analysis['Margin'] / student_analysis['Revenue'] * 100).round(1)
-    
-    # Calculate monthly aggregates based on revenue month
-    monthly_student_margins = student_analysis.groupby('Revenue Month').agg({
-        'Revenue': 'sum',
-        'Total Cost': 'sum',
-        'Student Initials': 'nunique'
-    }).reset_index()
-    
-    monthly_student_margins['Margin'] = monthly_student_margins['Revenue'] - monthly_student_margins['Total Cost']
-    monthly_student_margins['Margin %'] = (monthly_student_margins['Margin'] / monthly_student_margins['Revenue'] * 100).round(1)
-    monthly_student_margins = monthly_student_margins.rename(columns={'Student Initials': 'Unique Students'})
-    
-    # Create visualization
-    fig = go.Figure()
-    
-    # Add bars for revenue and cost
-    fig.add_trace(go.Bar(
-        x=monthly_student_margins['Revenue Month'].astype(str),
-        y=monthly_student_margins['Revenue'],
-        name='Revenue',
-        text=[f"${x:,.0f}" for x in monthly_student_margins['Revenue']],
-        textposition='auto',
-    ))
-    
-    fig.add_trace(go.Bar(
-        x=monthly_student_margins['Revenue Month'].astype(str),
-        y=monthly_student_margins['Total Cost'],
-        name='Total Cost (All Months)',
-        text=[f"${x:,.0f}" for x in monthly_student_margins['Total Cost']],
-        textposition='auto',
-    ))
-    
-    # Add line for margin percentage
-    fig.add_trace(go.Scatter(
-        x=monthly_student_margins['Revenue Month'].astype(str),
-        y=monthly_student_margins['Margin %'],
-        name='True Margin %',
-        yaxis='y2',
-        text=[f"{x:.1f}%" for x in monthly_student_margins['Margin %']],
-        textposition='top center',
-        mode='lines+markers+text',
-        line=dict(width=2),
-        marker=dict(size=8)
-    ))
-    
-    fig.update_layout(
-        title="Monthly Revenue vs Total Evaluation Costs (Including Future Months)",
-        xaxis_title="Revenue Month",
-        yaxis_title="Amount ($)",
-        yaxis2=dict(
-            title="Margin %",
-            overlaying='y',
-            side='right',
-            range=[0, max(monthly_student_margins['Margin %']) * 1.2]  # Give some headroom
-        ),
-        height=400,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        barmode='group'
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Show detailed monthly breakdown
-    st.subheader("Monthly Student-Based Analysis")
-    st.write("""
-    This table shows margins calculated by matching each student's revenue with their total evaluation costs, 
-    even if those costs extend into future months. This gives a more accurate picture of true efficiency gains.
-    """)
-    
-    # Format the table
-    display_table = monthly_student_margins.copy()
-    display_table['Revenue'] = display_table['Revenue'].map('${:,.2f}'.format)
-    display_table['Total Cost'] = display_table['Total Cost'].map('${:,.2f}'.format)
-    display_table['Margin'] = display_table['Margin'].map('${:,.2f}'.format)
-    display_table['Margin %'] = display_table['Margin %'].map('{:.1f}%'.format)
-    
-    st.dataframe(display_table.set_index('Revenue Month'), use_container_width=True)
-    
-    # Show individual student analysis
-    st.subheader("Individual Student Analysis")
-    st.write("""
-    This table shows the breakdown for each student, including their revenue month and all associated costs across months.
-    This helps identify cases where evaluation work extends significantly beyond the billing month.
-    """)
-    
-    # Format and display student details
-    student_details = student_analysis.copy()
-    student_details['Revenue'] = student_details['Revenue'].map('${:,.2f}'.format)
-    student_details['Monthly Cost'] = student_details['Monthly Cost'].map('${:,.2f}'.format)
-    student_details['Total Cost'] = student_details['Total Cost'].map('${:,.2f}'.format)
-    student_details['Margin'] = student_details['Margin'].map('${:,.2f}'.format)
-    student_details['Margin %'] = student_details['Margin %'].map('{:.1f}%'.format)
-    
-    st.dataframe(student_details.sort_values(['Revenue Month', 'Student Initials']), use_container_width=True)
-else:
-    st.warning("⚠️ Upload Gusto time tracking data to see student-based margin analysis.")
+    # Ensure Gusto data has matching columns
+    if 'Student Initials' not in filtered_gusto.columns:
+        st.warning("⚠️ Gusto data is missing student information. Please ensure time entries are tagged with student initials.")
+    else:
+        # Group costs by student across all months
+        student_costs = filtered_gusto.groupby(['Student Initials', 'Month'])['Cost'].sum().reset_index()
+        student_costs = student_costs.rename(columns={'Month': 'Cost Month', 'Cost': 'Monthly Cost'})
+        
+        # Create a full analysis of students, their revenue, and costs across months
+        student_analysis = pd.merge(
+            student_revenue,
+            student_costs,
+            on=['Student Initials'],
+            how='left'
+        )
+        
+        # Calculate total cost per student
+        total_student_costs = student_costs.groupby('Student Initials')['Monthly Cost'].sum().reset_index()
+        total_student_costs = total_student_costs.rename(columns={'Monthly Cost': 'Total Cost'})
+        
+        # Add total costs to the analysis
+        student_analysis = pd.merge(
+            student_analysis,
+            total_student_costs,
+            on=['Student Initials'],
+            how='left'
+        )
+        
+        # Calculate margins
+        student_analysis['Margin'] = student_analysis['Revenue'] - student_analysis['Total Cost']
+        student_analysis['Margin %'] = (student_analysis['Margin'] / student_analysis['Revenue'] * 100).round(1)
+        
+        # Calculate monthly aggregates based on service month
+        monthly_student_margins = student_analysis.groupby('Service Month').agg({
+            'Revenue': 'sum',
+            'Total Cost': 'sum',
+            'Student Initials': 'nunique'
+        }).reset_index()
+        
+        monthly_student_margins['Margin'] = monthly_student_margins['Revenue'] - monthly_student_margins['Total Cost']
+        monthly_student_margins['Margin %'] = (monthly_student_margins['Margin'] / monthly_student_margins['Revenue'] * 100).round(1)
+        monthly_student_margins = monthly_student_margins.rename(columns={'Student Initials': 'Unique Students'})
+        
+        # Create visualization
+        fig = go.Figure()
+        
+        # Add bars for revenue and cost
+        fig.add_trace(go.Bar(
+            x=monthly_student_margins['Service Month'].astype(str),
+            y=monthly_student_margins['Revenue'],
+            name='Revenue',
+            text=[f"${x:,.0f}" for x in monthly_student_margins['Revenue']],
+            textposition='auto',
+        ))
+        
+        fig.add_trace(go.Bar(
+            x=monthly_student_margins['Service Month'].astype(str),
+            y=monthly_student_margins['Total Cost'],
+            name='Total Student Cost',
+            text=[f"${x:,.0f}" for x in monthly_student_margins['Total Cost']],
+            textposition='auto',
+        ))
+        
+        # Add line for margin percentage
+        fig.add_trace(go.Scatter(
+            x=monthly_student_margins['Service Month'].astype(str),
+            y=monthly_student_margins['Margin %'],
+            name='True Margin %',
+            yaxis='y2',
+            text=[f"{x:.1f}%" for x in monthly_student_margins['Margin %']],
+            textposition='top center',
+            mode='lines+markers+text',
+            line=dict(width=2),
+            marker=dict(size=8)
+        ))
+        
+        fig.update_layout(
+            title="Monthly Revenue vs Total Student Costs (by Service Date)",
+            xaxis_title="Service Month",
+            yaxis_title="Amount ($)",
+            yaxis2=dict(
+                title="Margin %",
+                overlaying='y',
+                side='right',
+                range=[0, max(monthly_student_margins['Margin %']) * 1.2]  # Give some headroom
+            ),
+            height=400,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            barmode='group'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Show detailed monthly breakdown
+        st.subheader("Monthly Student-Based Analysis")
+        st.write("""
+        This table shows margins calculated by matching each student's revenue with their total costs, 
+        even if those costs extend into future months. This gives a more accurate picture of true efficiency gains.
+        """)
+        
+        # Format the table
+        display_table = monthly_student_margins.copy()
+        display_table['Revenue'] = display_table['Revenue'].map('${:,.2f}'.format)
+        display_table['Total Cost'] = display_table['Total Cost'].map('${:,.2f}'.format)
+        display_table['Margin'] = display_table['Margin'].map('${:,.2f}'.format)
+        display_table['Margin %'] = display_table['Margin %'].map('{:.1f}%'.format)
+        
+        st.dataframe(display_table.set_index('Service Month'), use_container_width=True)
+        
+        # Show individual student analysis
+        st.subheader("Individual Student Analysis")
+        st.write("""
+        This table shows the breakdown for each student, including their service month and all associated costs.
+        This helps identify cases where evaluation work extends beyond the service month.
+        """)
+        
+        # Format and display student details
+        student_details = student_analysis.copy()
+        student_details['Revenue'] = student_details['Revenue'].map('${:,.2f}'.format)
+        student_details['Monthly Cost'] = student_details['Monthly Cost'].map('${:,.2f}'.format)
+        student_details['Total Cost'] = student_details['Total Cost'].map('${:,.2f}'.format)
+        student_details['Margin'] = student_details['Margin'].map('${:,.2f}'.format)
+        student_details['Margin %'] = student_details['Margin %'].map('{:.1f}%'.format)
+        
+        st.dataframe(student_details.sort_values(['Service Month', 'Student Initials']), use_container_width=True)
 
 # Service type breakdown by month
-st.subheader("Service Type Analysis")
+st.header("📊 Service Analysis")
 
-# Calculate service type metrics
-service_type_data = filtered_qb.groupby(['Month', 'Service Type']).agg({
-    'Amount': 'sum',
-    'Student Initials': 'nunique'
-}).reset_index()
+# Revenue by service type
+service_revenue = filtered_qb.groupby('Service Type')['Amount'].sum().sort_values(ascending=True)
 
-# Pivot for stacked bar chart
-monthly_service_types = pd.pivot_table(
-    service_type_data,
-    index='Month',
-    columns='Service Type',
-    values='Amount',
-    aggfunc='sum'
-).fillna(0)
-
-# Create stacked bar chart
-fig = go.Figure()
-for service_type in monthly_service_types.columns:
-    fig.add_trace(go.Bar(
-        name=service_type,
-        x=monthly_service_types.index.astype(str),
-        y=monthly_service_types[service_type],
-        text=[f"${x:,.0f}" for x in monthly_service_types[service_type]],
+# Create bar chart
+fig = go.Figure(data=[
+    go.Bar(
+        x=service_revenue.values,
+        y=service_revenue.index,
+        orientation='h',
+        text=[f"${x:,.0f}" for x in service_revenue.values],
         textposition='auto',
-    ))
+    )
+])
 
 fig.update_layout(
-    title="Monthly Revenue by Service Type",
-    xaxis_title="Month",
-    yaxis_title="Revenue ($)",
-    barmode='stack',
-    height=500,
-    showlegend=True,
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
-    )
+    title="Revenue by Service Type",
+    xaxis_title="Revenue ($)",
+    showlegend=False,
+    height=400
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-# Show detailed monthly breakdown
-st.subheader("Monthly Service Type Breakdown")
-monthly_breakdown = pd.pivot_table(
-    filtered_qb,
-    index=['Month', 'Service Type'],
-    values=['Amount', 'Student Initials'],
-    aggfunc={
-        'Amount': 'sum',
-        'Student Initials': lambda x: len(set(x))  # Count unique students
-    }
-).reset_index()
+# Service bundle analysis
+bundle_revenue = filtered_qb.groupby('Service Bundle')['Amount'].sum().sort_values(ascending=True)
 
-monthly_breakdown.columns = ['Month', 'Service Type', 'Revenue', 'Unique Students']
-monthly_breakdown['Average Revenue/Student'] = monthly_breakdown['Revenue'] / monthly_breakdown['Unique Students']
+# Create bar chart
+fig = go.Figure(data=[
+    go.Bar(
+        x=bundle_revenue.values,
+        y=bundle_revenue.index,
+        orientation='h',
+        text=[f"${x:,.0f}" for x in bundle_revenue.values],
+        textposition='auto',
+    )
+])
 
-# Format the table
-monthly_breakdown['Revenue'] = monthly_breakdown['Revenue'].map('${:,.2f}'.format)
-monthly_breakdown['Average Revenue/Student'] = monthly_breakdown['Average Revenue/Student'].map('${:,.2f}'.format)
-
-st.dataframe(
-    monthly_breakdown.sort_values(['Month', 'Service Type']),
-    use_container_width=True
+fig.update_layout(
+    title="Revenue by Service Bundle",
+    xaxis_title="Revenue ($)",
+    showlegend=False,
+    height=400
 )
 
-# Show the raw monthly data in a table
-st.subheader("Monthly Summary")
-monthly_table = pd.DataFrame({
-    'Month': monthly_data.index.astype(str),
-    'Total Revenue': [f"${x:,.2f}" for x in monthly_data['Revenue']],
-    'Total Evaluations': monthly_data['Evaluations'],
-    'Avg Revenue/Eval': [f"${x:,.2f}" for x in monthly_data['Avg Revenue Per Eval']],
-})
+st.plotly_chart(fig, use_container_width=True)
 
-if gusto_df is not None:
-    monthly_table['Total Cost'] = [f"${x:,.2f}" for x in monthly_data['Cost']]
-    monthly_table['Gross Margin'] = [f"${x:,.2f}" for x in monthly_data['Gross Margin']]
-    monthly_table['Gross Margin %'] = [f"{x:.1f}%" for x in monthly_data['Gross Margin %']]
+# District Analysis
+st.header("📍 District Analysis")
 
-st.dataframe(monthly_table.set_index('Month'), use_container_width=True)
+# Revenue by district
+district_revenue = filtered_qb.groupby('District')['Amount'].sum().sort_values(ascending=True)
 
-# Add November debugging section
-st.subheader("November Analysis")
-november_data = filtered_qb[filtered_qb['Month'].astype(str).str.contains('2024-11')]
-st.write("November Service Types:")
-st.dataframe(
-    november_data.groupby('Service Type').agg({
-        'Amount': 'sum',
-        'Student Initials': 'nunique',
-        'District': lambda x: ', '.join(sorted(set(x)))
-    }).reset_index(),
-    use_container_width=True
+# Create bar chart
+fig = go.Figure(data=[
+    go.Bar(
+        x=district_revenue.values,
+        y=district_revenue.index,
+        orientation='h',
+        text=[f"${x:,.0f}" for x in district_revenue.values],
+        textposition='auto',
+    )
+])
+
+fig.update_layout(
+    title="Revenue by District",
+    xaxis_title="Revenue ($)",
+    showlegend=False,
+    height=400
 )
 
-# ========== TIME TRACKING ANALYSIS ==========
-if gusto_df is not None:
-    st.header("⏱️ Time Tracking Analysis")
-    st.info("Note: Time tracking data is supplementary and may not perfectly align with financial records.")
-    
-    # Time tracking KPIs
-    col1, col2, col3 = st.columns(3)
-    
-    total_hours = filtered_gusto['Hours'].sum()
-    avg_hours_per_eval = total_hours / total_evals if total_evals > 0 else 0
-    hourly_revenue = total_revenue / total_hours if total_hours > 0 else 0
-    
-    col1.metric("Total Hours", f"{total_hours:,.1f}")
-    col2.metric("Avg Hours/Eval", f"{avg_hours_per_eval:,.1f}")
-    col3.metric("Revenue/Hour", f"${hourly_revenue:,.2f}")
-    
-    # Hours by psychologist
-    st.subheader("Psychologist Analysis")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        psych_hours = filtered_gusto.groupby('Psychologist')['Hours'].sum().sort_values(ascending=True)
-        
-        # Create bar chart
-        fig = go.Figure(data=[
-            go.Bar(
-                x=psych_hours.values,
-                y=psych_hours.index,
-                orientation='h',
-                text=[f"{x:,.1f}" for x in psych_hours.values],
-                textposition='auto',
-            )
-        ])
-        
-        fig.update_layout(
-            title="Hours by Psychologist",
-            xaxis_title="Hours",
-            showlegend=False,
-            height=400
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        psych_evals = filtered_gusto.groupby('Psychologist')['Student Initials'].nunique().sort_values(ascending=True)
-        
-        # Create bar chart
-        fig = go.Figure(data=[
-            go.Bar(
-                x=psych_evals.values,
-                y=psych_evals.index,
-                orientation='h',
-                text=psych_evals.values,
-                textposition='auto',
-            )
-        ])
-        
-        fig.update_layout(
-            title="Evaluations by Psychologist",
-            xaxis_title="Number of Evaluations",
-            showlegend=False,
-            height=400
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Monthly hours trend
-    st.subheader("Monthly Hours")
-    monthly_hours = filtered_gusto.groupby('Month')['Hours'].sum()
-    
-    # Create line chart
-    fig = go.Figure(data=[
-        go.Scatter(
-            x=monthly_hours.index.astype(str),
-            y=monthly_hours.values,
-            mode='lines+markers',
-            text=[f"{x:,.1f}" for x in monthly_hours.values],
-            textposition='top center',
-        )
-    ])
-    
-    fig.update_layout(
-        title="Monthly Hours",
-        xaxis_title="Month",
-        yaxis_title="Hours",
-        showlegend=False,
-        height=400
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
-# ========== DOWNLOAD SECTION ==========
-st.sidebar.header("📥 Download Data")
+# Evaluations by district
+district_evals = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().reset_index().groupby('District').size().sort_values(ascending=True)
 
-if st.sidebar.button("Download Processed Data"):
-    # Prepare download data
-    output = StringIO()
-    
-    if qb_df is not None:
-        # Merge Gusto and QuickBooks data
-        merged_df = pd.merge(
-            filtered_gusto,
-            filtered_qb,
-            on=['District', 'Student Initials', 'Date'],
-            how='outer',
-            suffixes=('_time', '_revenue')
-        )
-    else:
-        merged_df = filtered_gusto
-    
-    merged_df.to_csv(output, index=False)
-    
-    # Create download button
-    st.sidebar.download_button(
-        label="📥 Download CSV",
-        data=output.getvalue(),
-        file_name="lilypad_analytics_export.csv",
-        mime="text/csv"
+# Create bar chart
+fig = go.Figure(data=[
+    go.Bar(
+        x=district_evals.values,
+        y=district_evals.index,
+        orientation='h',
+        text=district_evals.values,
+        textposition='auto',
     )
+])
+
+fig.update_layout(
+    title="Evaluations by District",
+    xaxis_title="Number of Evaluations",
+    showlegend=False,
+    height=400
+)
+
+st.plotly_chart(fig, use_container_width=True)
