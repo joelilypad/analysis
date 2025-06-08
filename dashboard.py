@@ -59,6 +59,12 @@ def load_latest_file(file_type):
             return f.read()
     return None
 
+def clear_latest_file(file_type):
+    """Clear the saved file of given type"""
+    file_path = Path.home() / ".lilypad_cache" / f"{file_type}_latest.csv"
+    if file_path.exists():
+        file_path.unlink()
+
 # ========== FILE UPLOADS ==========
 with st.sidebar:
     st.header("📁 Upload Your Files")
@@ -68,12 +74,21 @@ with st.sidebar:
     gusto_data = load_latest_file("gusto")
     
     # QuickBooks file uploader
-    quickbooks_file = st.file_uploader(
-        "QuickBooks Financial Export (CSV)",
-        type="csv",
-        key="quickbooks_file",
-        help="Upload the QuickBooks sales/revenue export"
-    )
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        quickbooks_file = st.file_uploader(
+            "QuickBooks Financial Export (CSV)",
+            type="csv",
+            key="quickbooks_file",
+            help="Upload the QuickBooks sales/revenue export"
+        )
+    with col2:
+        if quickbooks_data is not None:
+            if st.button("Clear QuickBooks", key="clear_qb"):
+                clear_latest_file("quickbooks")
+                quickbooks_file = None
+                st.rerun()
+    
     if quickbooks_file:
         save_latest_file(quickbooks_file, "quickbooks")
         st.rerun()
@@ -81,12 +96,21 @@ with st.sidebar:
         quickbooks_file = quickbooks_data
     
     # Gusto file uploader
-    gusto_file = st.file_uploader(
-        "Gusto Time Tracking Export (Optional, CSV)",
-        type="csv",
-        key="gusto_file",
-        help="Upload the raw Gusto contractor hours export (optional)"
-    )
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        gusto_file = st.file_uploader(
+            "Gusto Time Tracking Export (Optional, CSV)",
+            type="csv",
+            key="gusto_file",
+            help="Upload the raw Gusto contractor hours export (optional)"
+        )
+    with col2:
+        if gusto_data is not None:
+            if st.button("Clear Gusto", key="clear_gusto"):
+                clear_latest_file("gusto")
+                gusto_file = None
+                st.rerun()
+    
     if gusto_file:
         save_latest_file(gusto_file, "gusto")
         st.rerun()
