@@ -26,20 +26,35 @@ st.write("Analyze operational efficiency and financial performance for Lilypad L
 with st.sidebar:
     st.header("📁 Upload Your Files")
     
-    # QuickBooks file uploader
+    # QuickBooks file upload
+    st.markdown("### QuickBooks Data Upload")
+    qb_help = """To upload a fresh version of this file:
+    1. Go to QuickBooks and find 'Reports' in the sidebar
+    2. Click 'Custom Reports'
+    3. Select 'Export for Margins Analysis Application v2'
+    4. Adjust the date range as needed
+    5. Click 'Export to CSV' in the top right"""
     quickbooks_file = st.file_uploader(
         "QuickBooks Financial Export (CSV)",
         type="csv",
         key="quickbooks_file",
-        help="Upload the QuickBooks sales/revenue export"
+        help=qb_help
     )
     
-    # Gusto file uploader
+    # Gusto file upload
+    st.markdown("### Gusto Data Upload")
+    gusto_help = """To upload a fresh version of this file:
+    1. Login to Gusto and click 'Reports'
+    2. Under 'Recently Used', find and click 'Time tracking hours'
+    3. Keep all checkboxes selected on the next page
+    4. Adjust the custom date range to the maximum time period
+    5. Click 'Generate Report'
+    6. Click 'Download CSV'"""
     gusto_file = st.file_uploader(
         "Gusto Time Tracking Export (Optional, CSV)",
         type="csv",
         key="gusto_file",
-        help="Upload the raw Gusto contractor hours export (optional)"
+        help=gusto_help
     )
 
 # ========== DATA PROCESSING ==========
