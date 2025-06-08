@@ -376,6 +376,14 @@ monthly_data = pd.DataFrame({
     'Revenue': filtered_qb.groupby('Month')['Amount'].sum(),
     'Evaluations': filtered_qb[eval_mask].groupby(['Month', 'District', 'Evaluation Number'])['Service Type'].count().reset_index().groupby('Month').size(),
 })
+
+if gusto_df is not None:
+    # Calculate monthly costs and margins
+    monthly_costs = filtered_gusto.groupby('Month')['Cost'].sum()
+    monthly_data['Cost'] = monthly_costs
+    monthly_data['Gross Margin'] = monthly_data['Revenue'] - monthly_data['Cost']
+    monthly_data['Gross Margin %'] = (monthly_data['Gross Margin'] / monthly_data['Revenue'] * 100).round(1)
+
 monthly_data['Avg Revenue Per Eval'] = monthly_data['Revenue'] / monthly_data['Evaluations']
 
 # Display monthly metrics
@@ -421,6 +429,64 @@ with col2:
         yaxis_title="Number of Evaluations",
         showlegend=False,
         height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+if gusto_df is not None:
+    # Add gross margin chart
+    fig = go.Figure()
+    
+    # Add bars for revenue and cost
+    fig.add_trace(go.Bar(
+        x=monthly_data.index.astype(str),
+        y=monthly_data['Revenue'],
+        name='Revenue',
+        text=[f"${x:,.0f}" for x in monthly_data['Revenue']],
+        textposition='auto',
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=monthly_data.index.astype(str),
+        y=monthly_data['Cost'],
+        name='Cost',
+        text=[f"${x:,.0f}" for x in monthly_data['Cost']],
+        textposition='auto',
+    ))
+    
+    # Add line for margin percentage
+    fig.add_trace(go.Scatter(
+        x=monthly_data.index.astype(str),
+        y=monthly_data['Gross Margin %'],
+        name='Gross Margin %',
+        yaxis='y2',
+        text=[f"{x:.1f}%" for x in monthly_data['Gross Margin %']],
+        textposition='top center',
+        mode='lines+markers+text',
+        line=dict(width=2),
+        marker=dict(size=8)
+    ))
+    
+    fig.update_layout(
+        title="Monthly Revenue, Cost, and Gross Margin %",
+        xaxis_title="Month",
+        yaxis_title="Amount ($)",
+        yaxis2=dict(
+            title="Gross Margin %",
+            overlaying='y',
+            side='right',
+            range=[0, max(monthly_data['Gross Margin %']) * 1.2]  # Give some headroom
+        ),
+        height=400,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        barmode='group'
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -504,6 +570,12 @@ monthly_table = pd.DataFrame({
     'Total Evaluations': monthly_data['Evaluations'],
     'Avg Revenue/Eval': [f"${x:,.2f}" for x in monthly_data['Avg Revenue Per Eval']],
 })
+
+if gusto_df is not None:
+    monthly_table['Total Cost'] = [f"${x:,.2f}" for x in monthly_data['Cost']]
+    monthly_table['Gross Margin'] = [f"${x:,.2f}" for x in monthly_data['Gross Margin']]
+    monthly_table['Gross Margin %'] = [f"{x:.1f}%" for x in monthly_data['Gross Margin %']]
+
 st.dataframe(monthly_table.set_index('Month'), use_container_width=True)
 
 # Add November debugging section
