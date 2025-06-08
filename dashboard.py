@@ -140,35 +140,8 @@ eval_mask = (
     ~filtered_qb['Service Type'].str.contains('Academic Testing|IEP Meeting|Setup|Remote', na=False, case=False)
 )
 
-# Debug information
-st.sidebar.markdown("### 🔍 Evaluation Count Debug")
-
-# Show the evaluation data
-eval_data = filtered_qb[eval_mask].copy()
-eval_details = eval_data.groupby(['District', 'Evaluation Number', 'Student Initials', 'Service Type']).size().reset_index(name='Count')
-eval_details = eval_details.sort_values(['District', 'Evaluation Number'])
-
 # Count unique evaluations
-unique_evals = eval_data.groupby(['District', 'Evaluation Number']).size().reset_index(name='Services')
-total_evals = len(unique_evals)
-
-# Display detailed debug info
-st.sidebar.write(f"Total rows in filtered data: {len(filtered_qb)}")
-st.sidebar.write(f"Rows after eval mask: {len(eval_data)}")
-st.sidebar.write(f"Unique evaluations found: {total_evals}")
-
-# Show evaluation counts by district
-district_counts = unique_evals.groupby('District').size().sort_values(ascending=False)
-st.sidebar.write("\nEvaluations by District:")
-for district, count in district_counts.items():
-    st.sidebar.write(f"- {district}: {count}")
-
-# Show the raw evaluation data
-with st.sidebar.expander("Show Raw Evaluation Data"):
-    st.dataframe(eval_details)
-
-# Update the total_evals variable used elsewhere
-total_evals = len(unique_evals)
+total_evals = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().shape[0]
 
 avg_revenue_per_eval = total_revenue / total_evals if total_evals > 0 else 0
 
