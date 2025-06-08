@@ -69,10 +69,6 @@ def clear_latest_file(file_type):
 with st.sidebar:
     st.header("📁 Upload Your Files")
     
-    # Try to load existing files
-    quickbooks_data = load_latest_file("quickbooks")
-    gusto_data = load_latest_file("gusto")
-    
     # QuickBooks file uploader
     quickbooks_file = st.file_uploader(
         "QuickBooks Financial Export (CSV)",
@@ -81,15 +77,6 @@ with st.sidebar:
         help="Upload the QuickBooks sales/revenue export"
     )
     
-    if quickbooks_file:
-        save_latest_file(quickbooks_file, "quickbooks")
-        st.rerun()
-    elif quickbooks_data and not quickbooks_file:  # If file was cleared
-        clear_latest_file("quickbooks")
-        st.rerun()
-    elif quickbooks_data:  # Use saved data if available
-        quickbooks_file = quickbooks_data
-    
     # Gusto file uploader
     gusto_file = st.file_uploader(
         "Gusto Time Tracking Export (Optional, CSV)",
@@ -97,15 +84,6 @@ with st.sidebar:
         key="gusto_file",
         help="Upload the raw Gusto contractor hours export (optional)"
     )
-    
-    if gusto_file:
-        save_latest_file(gusto_file, "gusto")
-        st.rerun()
-    elif gusto_data and not gusto_file:  # If file was cleared
-        clear_latest_file("gusto")
-        st.rerun()
-    elif gusto_data:  # Use saved data if available
-        gusto_file = gusto_data
 
 # ========== DATA PROCESSING ==========
 @st.cache_data
@@ -143,7 +121,7 @@ def load_and_process_data(quickbooks_file, gusto_file):
         except Exception as e:
             st.warning("⚠️ Error processing Gusto data:")
             st.warning(str(e))
-        
+    
     return qb_df, gusto_df
 
 # Load and process the data

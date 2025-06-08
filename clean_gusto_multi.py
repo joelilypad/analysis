@@ -514,32 +514,9 @@ def process_gusto_file(file_content):
 def process_gusto_upload(uploaded_file):
     """Process uploaded Gusto file and return cleaned DataFrame."""
     try:
-        # Handle both string and bytes input
-        if isinstance(uploaded_file, (str, bytes)):
-            # If it's already bytes or string content
-            content = uploaded_file.decode('utf-8') if isinstance(uploaded_file, bytes) else uploaded_file
-        else:
-            # If it's a file-like object (e.g. StreamlitUploadedFile)
-            try:
-                # Try to read directly first
-                content = uploaded_file.getvalue()
-                if isinstance(content, bytes):
-                    content = content.decode('utf-8')
-            except:
-                try:
-                    content = uploaded_file.read()
-                    if isinstance(content, bytes):
-                        content = content.decode('utf-8')
-                except:
-                    # If both methods fail, try string conversion
-                    content = str(uploaded_file)
-            
-            # Reset file pointer if possible
-            try:
-                uploaded_file.seek(0)
-            except:
-                pass
-            
+        # Get file content
+        content = uploaded_file.getvalue().decode('utf-8')
+        
         # Process the data
         df = process_gusto_file(content)
         return df
