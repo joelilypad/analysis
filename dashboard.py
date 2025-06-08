@@ -593,39 +593,34 @@ if gusto_df is not None:
         st.dataframe(student_details[display_cols].sort_values(['Service Date', 'Student Initials']), use_container_width=True)
 
 # After the main financial metrics, add cost breakdown
-st.markdown("### 💰 Cost Breakdown")
+if gusto_df is not None and not filtered_gusto.empty:
+    st.markdown("### 💰 Cost Breakdown")
 
-# Calculate costs by psychologist
-psych_costs = (
-    filtered_gusto
-    .groupby('Psychologist')
-    .agg({
-        'Hours': 'sum',
-        'Cost': 'sum'
-    })
-    .round(2)
-    .sort_values('Cost', ascending=False)
-)
+    # Calculate costs by psychologist
+    psych_costs = (
+        filtered_gusto
+        .groupby('Psychologist')
+        .agg({
+            'Hours': 'sum',
+            'Cost': 'sum'
+        })
+        .round(2)
+        .sort_values('Cost', ascending=False)
+    )
 
-# Add total row
-total_row = pd.DataFrame({
-    'Hours': [psych_costs['Hours'].sum()],
-    'Cost': [psych_costs['Cost'].sum()]
-}, index=['Total'])
+    # Add total row
+    total_row = pd.DataFrame({
+        'Hours': [psych_costs['Hours'].sum()],
+        'Cost': [psych_costs['Cost'].sum()]
+    }, index=['Total'])
 
-psych_costs = pd.concat([psych_costs, total_row])
+    psych_costs = pd.concat([psych_costs, total_row])
 
-# Format for display
-display_costs = psych_costs.copy()
-display_costs['Hours'] = display_costs['Hours'].map('{:,.1f}'.format)
-display_costs['Cost'] = display_costs['Cost'].map('${:,.2f}'.format)
-
-st.dataframe(
-    display_costs,
-    column_config={
-        "Psychologist": "Psychologist",
-        "Hours": "Total Hours",
-        "Cost": "Total Cost"
-    },
-    use_container_width=True
-)
+    # Format for display
+    display_costs = psych_costs.copy()
+    display_costs['Hours'] = display_costs['Hours'].map('{:,.1f}'.format)
+    display_costs['Cost'] = display_costs['Cost'].map('${:,.2f}'.format)
+    
+    st.dataframe(display_costs, use_container_width=True)
+else:
+    st.info("Upload Gusto time tracking data to see cost breakdown by psychologist.")
