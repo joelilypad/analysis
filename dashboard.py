@@ -10,6 +10,9 @@ from quickbooks_parser import process_quickbooks_upload, generate_revenue_summar
 from school_calendar import generate_school_day_analysis
 import numpy as np
 from datetime import datetime
+import os
+import jinja2
+import json
 
 # ========== PAGE CONFIG ==========
 st.set_page_config(
@@ -733,3 +736,206 @@ if qb_df is not None and not qb_df.empty:
     # Add link to history page
     st.sidebar.markdown("---")
     st.sidebar.info("📚 View all analysis runs in the [Results History](/Results_History) page")
+
+# Create reports directory if it doesn't exist
+os.makedirs('published_reports', exist_ok=True)
+
+def save_analysis_report(data):
+    """Save the current analysis as a static HTML report"""
+    # Load the template
+    template_str = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Lilypad Analysis Report - {{ timestamp }}</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <style>
+            body { padding: 20px; }
+            .metric-card {
+                border: 1px solid #ddd;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 15px;
+            }
+            .metric-value {
+                font-size: 24px;
+                font-weight: bold;
+            }
+            .metric-label {
+                color: #666;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1 class="mb-4">Lilypad Analysis Report</h1>
+            <p class="text-muted">Generated on {{ timestamp }}</p>
+            
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="metric-value">${{ '{:,.2f}'.format(total_revenue) }}</div>
+                        <div class="metric-label">Total Revenue</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="metric-value">${{ '{:,.2f}'.format(total_cost) }}</div>
+                        <div class="metric-label">Total Cost</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="metric-value">${{ '{:,.2f}'.format(gross_margin) }}</div>
+                        <div class="metric-label">Gross Margin</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="metric-card">
+                        <div class="metric-value">{{ '{:.1f}'.format(margin_percent) }}%</div>
+                        <div class="metric-label">Margin Percentage</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="metric-card">
+                        <div class="metric-value">{{ total_evals }}</div>
+                        <div class="metric-label">Total Evaluations</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="metric-card">
+                        <div class="metric-value">${{ '{:,.2f}'.format(avg_revenue_per_eval) }}</div>
+                        <div class="metric-label">Average Revenue per Evaluation</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Analysis Parameters</h5>
+                    <p><strong>Date Range:</strong> {{ date_range[0] }} to {{ date_range[1] }}</p>
+                    <p><strong>Districts:</strong> {{ ', '.join(districts) }}</p>
+                    {% if psychologists %}
+                    <p><strong>Psychologists:</strong> {{ ', '.join(psychologists) }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if monthly_chart %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Monthly Revenue and Costs</h5>
+                    <div id="monthlyChart"></div>
+                </div>
+            </div>
+            <script>
+                var monthlyChart = {{ monthly_chart | safe }};
+                Plotly.newPlot('monthlyChart', monthlyChart.data, monthlyChart.layout);
+            </script>
+            {% endif %}
+
+            {% if task_dist_chart %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Task Distribution by Psychologist</h5>
+                    <div id="taskDistChart"></div>
+                </div>
+            </div>
+            <script>
+                var taskDistChart = {{ task_dist_chart | safe }};
+                Plotly.newPlot('taskDistChart', taskDistChart.data, taskDistChart.layout);
+            </script>
+            {% endif %}
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Create the report filename
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'published_reports/analysis_report_{timestamp}.html'
+    
+    # Prepare the charts data if they exist
+    monthly_chart = None
+    if 'monthly_data' in data and not data['monthly_data'].empty:
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=data['monthly_data'].index.astype(str),
+            y=data['monthly_data']['Revenue'],
+            name='Revenue'
+        ))
+        if 'Cost' in data['monthly_data'].columns:
+            fig.add_trace(go.Bar(
+                x=data['monthly_data'].index.astype(str),
+                y=data['monthly_data']['Cost'],
+                name='Cost'
+            ))
+        monthly_chart = fig.to_json()
+
+    # Prepare template data
+    template_data = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'total_revenue': data['total_revenue'],
+        'total_cost': data.get('total_cost', 0),
+        'gross_margin': data.get('gross_margin', data['total_revenue']),
+        'margin_percent': data.get('margin_percent', 100),
+        'total_evals': data['total_evals'],
+        'avg_revenue_per_eval': data['avg_revenue_per_eval'],
+        'districts': data['districts'],
+        'psychologists': data.get('psychologists', []),
+        'date_range': data['date_range'],
+        'monthly_chart': monthly_chart,
+        'task_dist_chart': data.get('task_dist_chart')
+    }
+    
+    # Render and save the template
+    template = jinja2.Template(template_str)
+    html_content = template.render(**template_data)
+    
+    with open(filename, 'w') as f:
+        f.write(html_content)
+    
+    return filename
+
+# Add publish button to the sidebar
+if st.sidebar.button("📤 Publish Analysis"):
+    if 'qb_df' in locals() and qb_df is not None and not qb_df.empty:
+        # Gather current analysis data
+        analysis_data = {
+            'total_revenue': total_revenue,
+            'total_evals': total_evals,
+            'avg_revenue_per_eval': avg_revenue_per_eval,
+            'districts': list(selected_districts),
+            'date_range': [date_range[0].strftime('%Y-%m-%d'), date_range[1].strftime('%Y-%m-%d')],
+            'monthly_data': monthly_data
+        }
+        
+        if 'gusto_df' in locals() and gusto_df is not None and not gusto_df.empty:
+            analysis_data.update({
+                'total_cost': total_cost,
+                'gross_margin': gross_margin,
+                'margin_percent': margin_percent,
+                'psychologists': list(selected_psychs)
+            })
+            
+            # Add task distribution chart if it exists
+            if 'task_dist_df' in locals():
+                fig = px.imshow(
+                    task_dist_df.pivot(index='Psychologist', columns='Task', values='Percentage'),
+                    labels=dict(x='Task', y='Psychologist', color='% of Time'),
+                    aspect='auto',
+                    color_continuous_scale='RdYlBu_r'
+                )
+                analysis_data['task_dist_chart'] = fig.to_json()
+        
+        # Save the report
+        report_file = save_analysis_report(analysis_data)
+        
+        # Show success message with link
+        st.sidebar.success(f"Analysis published! [View Report](/{report_file})")
+    else:
+        st.sidebar.error("Please upload and process data before publishing.")
