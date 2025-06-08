@@ -154,11 +154,14 @@ col1.metric("Total Revenue", f"${total_revenue:,.2f}")
 col2.metric("Total Evaluations", f"{total_evals:,}")
 col3.metric("Avg Revenue/Eval", f"${avg_revenue_per_eval:,.2f}")
 if gusto_df is not None:
-    col4.metric(
-        "Gross Profit",
-        f"${gross_margin:,.2f}",
-        f"{margin_percent:.1f}%"
-    )
+    # Show Gross Profit with percentage without arrow
+    col4.container().markdown(f"""
+        <div style="padding: 0.5rem 0;">
+            <div style="color: rgb(71, 85, 105); font-size: 0.875rem; font-weight: 500;">Gross Profit</div>
+            <div style="color: rgb(17, 24, 39); font-size: 1.5rem; font-weight: 600; margin: 0.25rem 0;">${gross_margin:,.2f}</div>
+            <div style="color: rgb(21, 128, 61); font-size: 0.875rem; font-weight: 500;">{margin_percent:.1f}%</div>
+        </div>
+    """, unsafe_allow_html=True)
 
 # Monthly metrics
 st.subheader("Monthly Analysis")
@@ -301,12 +304,14 @@ col1.metric(
     f"${overall_metrics['total_revenue']:,.2f}"
 )
 
-col2.metric(
-    "Average Revenue per School Day",
-    f"${overall_metrics['avg_revenue_per_school_day']:,.2f}/day"
-)
-
-st.write(f"{overall_metrics['total_school_days']} school days total")
+# Show Average Revenue per School Day with total days without arrow
+col2.container().markdown(f"""
+    <div style="padding: 0.5rem 0;">
+        <div style="color: rgb(71, 85, 105); font-size: 0.875rem; font-weight: 500;">Average Revenue per School Day</div>
+        <div style="color: rgb(17, 24, 39); font-size: 1.5rem; font-weight: 600; margin: 0.25rem 0;">${overall_metrics['avg_revenue_per_school_day']:,.2f}/day</div>
+        <div style="color: rgb(21, 128, 61); font-size: 0.875rem; font-weight: 500;">{overall_metrics['total_school_days']} school days</div>
+    </div>
+""", unsafe_allow_html=True)
 
 # Create monthly breakdown visualization
 st.subheader("Monthly Revenue per School Day")
