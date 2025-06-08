@@ -279,6 +279,71 @@ if gusto_df is not None:
     
     st.plotly_chart(fig, use_container_width=True)
 
+# School Day Analysis section
+st.header("📅 School Day Analysis")
+st.info("""
+This analysis shows revenue per school day, calculated by dividing each month's total revenue by the number of school days in that month.
+This helps normalize revenue across months with different numbers of school days (e.g. February vs March).
+""")
+
+# Generate school day analysis
+overall_metrics, monthly_school_metrics = generate_school_day_analysis(filtered_qb)
+
+# Display overall metrics
+col1, col2 = st.columns(2)
+
+col1.metric(
+    "Total Revenue",
+    f"${overall_metrics['total_revenue']:,.2f}"
+)
+
+col2.metric(
+    "Average Revenue per School Day",
+    f"${overall_metrics['avg_revenue_per_school_day']:,.2f}/day",
+    f"{overall_metrics['total_school_days']} school days total"
+)
+
+# Create monthly breakdown visualization
+st.subheader("Monthly Revenue per School Day")
+
+# Bar chart showing revenue per school day by month
+fig = go.Figure()
+
+fig.add_trace(go.Bar(
+    x=monthly_school_metrics['Month'],
+    y=monthly_school_metrics['revenue_per_school_day'],
+    name='Revenue per School Day',
+    text=[f"${x:,.0f}/day" for x in monthly_school_metrics['revenue_per_school_day']],
+    textposition='auto',
+))
+
+fig.update_layout(
+    title="Revenue per School Day (Normalized by Available School Days)",
+    xaxis_title="Month",
+    yaxis_title="Revenue per School Day ($)",
+    showlegend=False,
+    height=400
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# Display detailed metrics table
+st.subheader("Monthly School Day Metrics")
+st.write("""
+This table shows the monthly breakdown of revenue and school days,
+helping identify true monthly performance by accounting for the varying number of school days.
+""")
+
+# Format the monthly metrics for display
+display_metrics = monthly_school_metrics.copy()
+display_metrics['Total Revenue'] = display_metrics['total_revenue'].map('${:,.2f}'.format)
+display_metrics['School Days in Month'] = display_metrics['school_days']
+display_metrics['Revenue per School Day'] = display_metrics['revenue_per_school_day'].map('${:,.2f}'.format)
+
+# Select and rename columns for display
+display_cols = ['Month', 'Total Revenue', 'School Days in Month', 'Revenue per School Day']
+st.dataframe(display_metrics[display_cols], use_container_width=True)
+
 # Student-Based Margin Analysis
 if gusto_df is not None:
     st.header("📊 Student-Based Margin Analysis")
@@ -295,19 +360,44 @@ if gusto_df is not None:
     # Get evaluation data with student info
     eval_data = filtered_qb[eval_mask].copy()
     
-    # Group revenue by student and service date
-    student_revenue = eval_data.groupby(['Student Initials', 'Evaluation Number', 'Month'])['Amount'].sum().reset_index()
-    student_revenue = student_revenue.rename(columns={'Month': 'Service Month', 'Amount': 'Revenue'})
+    # Group by student and evaluation number to get total revenue
+    student_revenue = (
+        eval_data
+        .groupby(['Student Initials', 'Evaluation Number'])
+        .agg({
+            'Amount': 'sum',
+            'Date': 'min'  # Use first date as service date
+        })
+        .reset_index()
+        .rename(columns={
+            'Amount': 'Revenue',
+            'Date': 'Service Date'
+        })
+    )
+    
+    # Add month for grouping
+    student_revenue['Month'] = student_revenue['Service Date'].dt.to_period('M')
     
     # Ensure Gusto data has matching columns
     if 'Student Initials' not in filtered_gusto.columns:
         st.warning("⚠️ Gusto data is missing student information. Please ensure time entries are tagged with student initials.")
     else:
-        # Group costs by student across all months
-        student_costs = filtered_gusto.groupby(['Student Initials', 'Month'])['Cost'].sum().reset_index()
-        student_costs = student_costs.rename(columns={'Month': 'Cost Month', 'Cost': 'Monthly Cost'})
+        # Group costs by student and evaluation
+        student_costs = (
+            filtered_gusto
+            .groupby(['Student Initials'])
+            .agg({
+                'Cost': 'sum',
+                'Hours': 'sum'
+            })
+            .reset_index()
+            .rename(columns={
+                'Cost': 'Total Cost',
+                'Hours': 'Total Hours'
+            })
+        )
         
-        # Create a full analysis of students, their revenue, and costs across months
+        # Merge revenue and costs
         student_analysis = pd.merge(
             student_revenue,
             student_costs,
@@ -315,60 +405,58 @@ if gusto_df is not None:
             how='left'
         )
         
-        # Calculate total cost per student
-        total_student_costs = student_costs.groupby('Student Initials')['Monthly Cost'].sum().reset_index()
-        total_student_costs = total_student_costs.rename(columns={'Monthly Cost': 'Total Cost'})
-        
-        # Add total costs to the analysis
-        student_analysis = pd.merge(
-            student_analysis,
-            total_student_costs,
-            on=['Student Initials'],
-            how='left'
-        )
-        
         # Calculate margins
+        student_analysis['Total Cost'] = student_analysis['Total Cost'].fillna(0)
         student_analysis['Margin'] = student_analysis['Revenue'] - student_analysis['Total Cost']
         student_analysis['Margin %'] = (student_analysis['Margin'] / student_analysis['Revenue'] * 100).round(1)
         
-        # Calculate monthly aggregates based on service month
-        monthly_student_margins = student_analysis.groupby('Service Month').agg({
-            'Revenue': 'sum',
-            'Total Cost': 'sum',
-            'Student Initials': 'nunique'
-        }).reset_index()
+        # Calculate monthly aggregates
+        monthly_margins = (
+            student_analysis
+            .groupby('Month')
+            .agg({
+                'Revenue': 'sum',
+                'Total Cost': 'sum',
+                'Student Initials': 'nunique',
+                'Evaluation Number': 'count'
+            })
+            .reset_index()
+        )
         
-        monthly_student_margins['Margin'] = monthly_student_margins['Revenue'] - monthly_student_margins['Total Cost']
-        monthly_student_margins['Margin %'] = (monthly_student_margins['Margin'] / monthly_student_margins['Revenue'] * 100).round(1)
-        monthly_student_margins = monthly_student_margins.rename(columns={'Student Initials': 'Unique Students'})
+        monthly_margins['Margin'] = monthly_margins['Revenue'] - monthly_margins['Total Cost']
+        monthly_margins['Margin %'] = (monthly_margins['Margin'] / monthly_margins['Revenue'] * 100).round(1)
+        monthly_margins = monthly_margins.rename(columns={
+            'Student Initials': 'Unique Students',
+            'Evaluation Number': 'Total Evaluations'
+        })
         
         # Create visualization
         fig = go.Figure()
         
         # Add bars for revenue and cost
         fig.add_trace(go.Bar(
-            x=monthly_student_margins['Service Month'].astype(str),
-            y=monthly_student_margins['Revenue'],
+            x=monthly_margins['Month'].astype(str),
+            y=monthly_margins['Revenue'],
             name='Revenue',
-            text=[f"${x:,.0f}" for x in monthly_student_margins['Revenue']],
+            text=[f"${x:,.0f}" for x in monthly_margins['Revenue']],
             textposition='auto',
         ))
         
         fig.add_trace(go.Bar(
-            x=monthly_student_margins['Service Month'].astype(str),
-            y=monthly_student_margins['Total Cost'],
+            x=monthly_margins['Month'].astype(str),
+            y=monthly_margins['Total Cost'],
             name='Total Cost',
-            text=[f"${x:,.0f}" for x in monthly_student_margins['Total Cost']],
+            text=[f"${x:,.0f}" for x in monthly_margins['Total Cost']],
             textposition='auto',
         ))
         
         # Add line for margin percentage
         fig.add_trace(go.Scatter(
-            x=monthly_student_margins['Service Month'].astype(str),
-            y=monthly_student_margins['Margin %'],
+            x=monthly_margins['Month'].astype(str),
+            y=monthly_margins['Margin %'],
             name='Margin %',
             yaxis='y2',
-            text=[f"{x:.1f}%" for x in monthly_student_margins['Margin %']],
+            text=[f"{x:.1f}%" for x in monthly_margins['Margin %']],
             textposition='top center',
             mode='lines+markers+text',
             line=dict(width=2),
@@ -400,104 +488,41 @@ if gusto_df is not None:
         st.plotly_chart(fig, use_container_width=True)
         
         st.write("""
-        This table shows margins calculated by matching each student's revenue with their total costs, 
-        even if those costs extend across multiple months. This gives a more accurate picture of the true cost
-        of servicing each student through the entire evaluation process.
+        This table shows the monthly breakdown of student evaluations and their associated costs.
+        The margin is calculated by matching each evaluation's revenue with the total cost of servicing that student.
         """)
         
         # Format the table
-        display_table = monthly_student_margins.copy()
+        display_table = monthly_margins.copy()
+        display_table['Month'] = display_table['Month'].astype(str)
         display_table['Revenue'] = display_table['Revenue'].map('${:,.2f}'.format)
         display_table['Total Cost'] = display_table['Total Cost'].map('${:,.2f}'.format)
         display_table['Margin'] = display_table['Margin'].map('${:,.2f}'.format)
         display_table['Margin %'] = display_table['Margin %'].map('{:.1f}%'.format)
         
-        st.dataframe(display_table.set_index('Service Month'), use_container_width=True)
+        st.dataframe(display_table, use_container_width=True)
         
         # Show individual student analysis
         st.subheader("Individual Student Analysis")
         st.write("""
-        This table shows the complete timeline for each student, including:
-        - When the evaluation was billed
-        - All associated costs across months (planning, testing, report writing, meetings)
-        - Total margin for the full evaluation process
+        This table shows each evaluation and its associated costs:
+        - Revenue from the evaluation
+        - Total hours spent on the student
+        - Total cost across all activities
+        - Resulting margin for the complete evaluation
         """)
         
         # Format and display student details
         student_details = student_analysis.copy()
+        student_details['Service Date'] = student_details['Service Date'].dt.strftime('%Y-%m-%d')
         student_details['Revenue'] = student_details['Revenue'].map('${:,.2f}'.format)
-        student_details['Monthly Cost'] = student_details['Monthly Cost'].map('${:,.2f}'.format)
         student_details['Total Cost'] = student_details['Total Cost'].map('${:,.2f}'.format)
         student_details['Margin'] = student_details['Margin'].map('${:,.2f}'.format)
         student_details['Margin %'] = student_details['Margin %'].map('{:.1f}%'.format)
         
-        st.dataframe(student_details.sort_values(['Service Month', 'Student Initials']), use_container_width=True)
-
-# After the District Analysis section, add School Day Analysis
-st.header("📅 School Day Analysis")
-st.info("This analysis shows revenue per active school day, based on the typical Massachusetts public school calendar.")
-
-# Generate school day analysis
-overall_metrics, monthly_school_metrics = generate_school_day_analysis(filtered_qb)
-
-# Display overall metrics
-col1, col2 = st.columns(2)
-
-col1.metric(
-    "Total School Day Revenue",
-    f"${overall_metrics['school_day_revenue']:,.2f}"
-)
-
-col2.metric(
-    "Average Revenue per School Day",
-    f"${overall_metrics['avg_revenue_per_school_day']:,.2f}/day"
-)
-
-# Create monthly breakdown visualization
-st.subheader("Monthly Revenue per School Day")
-
-# Calculate and display monthly revenue per school day
-monthly_per_day = monthly_school_metrics.copy()
-monthly_per_day['Revenue per School Day'] = (
-    monthly_per_day['school_day_revenue'] / 
-    monthly_per_day['school_days'].clip(lower=1)  # Avoid division by zero
-)
-
-# Bar chart showing revenue per school day by month
-fig = go.Figure()
-
-fig.add_trace(go.Bar(
-    x=monthly_per_day['Month'].astype(str),
-    y=monthly_per_day['Revenue per School Day'],
-    name='Revenue per School Day',
-    text=[f"${x:,.0f}/day" for x in monthly_per_day['Revenue per School Day']],
-    textposition='auto',
-))
-
-fig.update_layout(
-    title="Revenue per Active School Day",
-    xaxis_title="Month",
-    yaxis_title="Revenue per School Day ($)",
-    showlegend=False,
-    height=400
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# Display detailed metrics table
-st.subheader("Monthly School Day Metrics")
-st.write("""
-This table shows the monthly breakdown of revenue and active school days,
-helping identify which months are most efficient in terms of revenue per school day.
-""")
-
-# Format the monthly metrics for display
-display_metrics = monthly_per_day.copy()
-display_metrics['Month'] = display_metrics['Month'].astype(str)
-display_metrics['Total Revenue'] = display_metrics['school_day_revenue'].map('${:,.2f}'.format)
-display_metrics['Active School Days'] = display_metrics['school_days']
-display_metrics['Revenue per School Day'] = display_metrics['Revenue per School Day'].map('${:,.2f}'.format)
-
-# Select and rename columns for display
-display_cols = ['Month', 'Total Revenue', 'Active School Days', 'Revenue per School Day']
-st.dataframe(display_metrics[display_cols], use_container_width=True)
+        # Reorder columns for display
+        display_cols = [
+            'Student Initials', 'Evaluation Number', 'Service Date',
+            'Revenue', 'Total Hours', 'Total Cost', 'Margin', 'Margin %'
+        ]
+        st.dataframe(student_details[display_cols].sort_values(['Service Date', 'Student Initials']), use_container_width=True)

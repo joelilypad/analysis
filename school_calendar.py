@@ -83,55 +83,63 @@ def calculate_school_day_metrics(df):
     # Ensure Date column is datetime
     df['Date'] = pd.to_datetime(df['Date'])
     
-    # Get unique dates and check if they're school days
-    dates = df['Date'].unique()
-    school_day_map = {d: is_school_day(d) for d in dates}
+    # Get the full range of months in the data
+    start_date = df['Date'].min().replace(day=1)
+    end_date = df['Date'].max().replace(day=1) + pd.offsets.MonthEnd(1)
     
-    # Add school day indicator
-    df['Is School Day'] = df['Date'].map(school_day_map)
+    # Get all possible dates in range
+    all_dates = pd.date_range(start=start_date, end=end_date)
     
-    # Calculate metrics
-    metrics = {
-        'total_revenue': df['Amount'].sum(),
-        'school_day_revenue': df[df['Is School Day']]['Amount'].sum(),
-        'non_school_day_revenue': df[~df['Is School Day']]['Amount'].sum(),
-        'total_days': len(dates),
-        'school_days': sum(1 for d in dates if school_day_map[d]),
-        'non_school_days': sum(1 for d in dates if not school_day_map[d])
+    # Create a mapping of dates to school days
+    school_day_map = {d: is_school_day(d) for d in all_dates}
+    
+    # Calculate school days per month
+    monthly_school_days = (
+        pd.DataFrame(index=all_dates)
+        .assign(is_school_day=lambda df: df.index.map(school_day_map))
+        .reset_index()
+        .rename(columns={'index': 'Date'})
+        .assign(Month=lambda df: df['Date'].dt.to_period('M'))
+        .groupby('Month')['is_school_day']
+        .sum()
+    )
+    
+    # Calculate revenue per month
+    monthly_revenue = df.groupby(df['Date'].dt.to_period('M'))['Amount'].sum()
+    
+    # Combine into metrics
+    metrics = pd.DataFrame({
+        'total_revenue': monthly_revenue,
+        'school_days': monthly_school_days
+    }).fillna(0)
+    
+    # Calculate revenue per school day
+    metrics['revenue_per_school_day'] = (
+        metrics['total_revenue'] / metrics['school_days'].clip(lower=1)
+    )
+    
+    # Calculate overall metrics
+    overall_metrics = {
+        'total_revenue': metrics['total_revenue'].sum(),
+        'total_school_days': metrics['school_days'].sum(),
+        'avg_revenue_per_school_day': (
+            metrics['total_revenue'].sum() / metrics['school_days'].sum()
+            if metrics['school_days'].sum() > 0 else 0
+        )
     }
     
-    # Calculate averages
-    metrics['avg_revenue_per_school_day'] = (
-        metrics['school_day_revenue'] / metrics['school_days'] 
-        if metrics['school_days'] > 0 else 0
-    )
-    metrics['avg_revenue_per_non_school_day'] = (
-        metrics['non_school_day_revenue'] / metrics['non_school_days']
-        if metrics['non_school_days'] > 0 else 0
-    )
-    
-    return metrics
+    return overall_metrics, metrics
 
 def generate_school_day_analysis(df):
     """
-    Generate a detailed analysis of revenue by school days vs non-school days.
+    Generate a detailed analysis of revenue by school days.
     Returns both summary metrics and monthly breakdown.
     """
-    # Calculate overall metrics
-    overall_metrics = calculate_school_day_metrics(df)
+    # Calculate metrics
+    overall_metrics, monthly_metrics = calculate_school_day_metrics(df)
     
-    # Calculate monthly breakdown
-    df['Month'] = df['Date'].dt.to_period('M')
-    monthly_data = []
-    
-    for month in df['Month'].unique():
-        month_df = df[df['Month'] == month]
-        month_metrics = calculate_school_day_metrics(month_df)
-        monthly_data.append({
-            'Month': month,
-            **month_metrics
-        })
-    
-    monthly_df = pd.DataFrame(monthly_data)
+    # Convert monthly metrics to DataFrame with month as column
+    monthly_df = monthly_metrics.reset_index()
+    monthly_df['Month'] = monthly_df['Month'].astype(str)
     
     return overall_metrics, monthly_df 
