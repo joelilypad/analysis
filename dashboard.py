@@ -243,7 +243,9 @@ eval_mask = (
     filtered_qb['Service Type'].str.contains('Evaluation', na=False) &
     ~filtered_qb['Service Type'].str.contains('Academic Achievement Testing|IEP Meeting|Remote Setup', na=False)
 )
-total_evals = filtered_qb[eval_mask].groupby(['Invoice', 'Student Initials'])['Service Type'].count().shape[0]
+
+# Count evaluations by evaluation number within each district
+total_evals = filtered_qb[eval_mask].groupby(['District', 'Evaluation Number'])['Service Type'].count().shape[0]
 
 avg_revenue_per_eval = total_revenue / total_evals if total_evals > 0 else 0
 
@@ -372,10 +374,9 @@ st.subheader("Monthly Analysis")
 # Calculate monthly metrics
 monthly_data = pd.DataFrame({
     'Revenue': filtered_qb.groupby('Month')['Amount'].sum(),
-    'Evaluations': filtered_qb[eval_mask].groupby(['Month', 'Invoice', 'Student Initials'])['Service Type'].count().reset_index().groupby('Month').size(),
-    'Avg Revenue Per Eval': filtered_qb.groupby('Month')['Amount'].sum() / 
-        filtered_qb[eval_mask].groupby(['Month', 'Invoice', 'Student Initials'])['Service Type'].count().reset_index().groupby('Month').size()
+    'Evaluations': filtered_qb[eval_mask].groupby(['Month', 'District', 'Evaluation Number'])['Service Type'].count().reset_index().groupby('Month').size(),
 })
+monthly_data['Avg Revenue Per Eval'] = monthly_data['Revenue'] / monthly_data['Evaluations']
 
 # Display monthly metrics
 col1, col2 = st.columns(2)
@@ -423,26 +424,6 @@ with col2:
     )
     
     st.plotly_chart(fig, use_container_width=True)
-
-# Monthly revenue per evaluation
-fig = go.Figure(data=[
-    go.Bar(
-        x=monthly_data.index.astype(str),
-        y=monthly_data['Avg Revenue Per Eval'],
-        text=[f"${x:,.0f}" for x in monthly_data['Avg Revenue Per Eval']],
-        textposition='auto',
-    )
-])
-
-fig.update_layout(
-    title="Average Revenue per Evaluation by Month",
-    xaxis_title="Month",
-    yaxis_title="Revenue per Evaluation ($)",
-    showlegend=False,
-    height=400
-)
-
-st.plotly_chart(fig, use_container_width=True)
 
 # Service type breakdown by month
 st.subheader("Service Type Analysis")
@@ -499,7 +480,7 @@ monthly_breakdown = pd.pivot_table(
     values=['Amount', 'Student Initials'],
     aggfunc={
         'Amount': 'sum',
-        'Student Initials': 'nunique'
+        'Student Initials': lambda x: len(set(x))  # Count unique students
     }
 ).reset_index()
 
@@ -524,6 +505,19 @@ monthly_table = pd.DataFrame({
     'Avg Revenue/Eval': [f"${x:,.2f}" for x in monthly_data['Avg Revenue Per Eval']],
 })
 st.dataframe(monthly_table.set_index('Month'), use_container_width=True)
+
+# Add November debugging section
+st.subheader("November Analysis")
+november_data = filtered_qb[filtered_qb['Month'].astype(str).str.contains('2024-11')]
+st.write("November Service Types:")
+st.dataframe(
+    november_data.groupby('Service Type').agg({
+        'Amount': 'sum',
+        'Student Initials': 'nunique',
+        'District': lambda x: ', '.join(sorted(set(x)))
+    }).reset_index(),
+    use_container_width=True
+)
 
 # ========== TIME TRACKING ANALYSIS ==========
 if gusto_df is not None:

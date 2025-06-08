@@ -50,9 +50,21 @@ def extract_student_info(description):
         
     description = str(description).strip()
     
-    # Extract evaluation number
-    eval_num_match = re.search(r'Evaluation #?\s*(\d+)', description)
-    eval_num = eval_num_match.group(1) if eval_num_match else None
+    # Extract evaluation number - handle more formats
+    eval_num = None
+    eval_patterns = [
+        r'Evaluation #?\s*(\d+)',  # Standard format: "Evaluation #123" or "Evaluation 123"
+        r'Eval #?\s*(\d+)',        # Abbreviated: "Eval #123" or "Eval 123"
+        r'#\s*(\d+)',              # Just the number: "#123"
+        r'\(#(\d+)\)',             # Parenthesized: "(#123)"
+        r'(\d{2,})'                # Any 2+ digit number (last resort, might be noisy)
+    ]
+    
+    for pattern in eval_patterns:
+        match = re.search(pattern, description)
+        if match:
+            eval_num = match.group(1)
+            break
     
     # Extract student initials (in parentheses)
     initials_match = re.search(r'\(([A-Z]{2,3})\)', description)
