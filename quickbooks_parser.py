@@ -128,6 +128,13 @@ def process_quickbooks_file(file_content):
         
         if start_idx is None:
             raise Exception("Could not find column headers in file")
+            
+        # Add validation for minimum required columns
+        required_columns = [
+            'Transaction date', 'Transaction type', 'Num', 'Customer',
+            'Product/Service full name', 'Line description', 'Amount',
+            'Quantity', 'Sales price'
+        ]
         
         # Read CSV starting from data rows
         df = pd.read_csv(io.StringIO('\n'.join(lines[start_idx:])))
@@ -135,6 +142,31 @@ def process_quickbooks_file(file_content):
         # Clean column names and drop empty columns
         df.columns = [col.strip() for col in df.columns]
         df = df.dropna(axis=1, how='all')
+        
+        # Validate required columns
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise Exception(f"Missing required columns: {', '.join(missing_columns)}")
+            
+        # Add validation for data quality
+        if df.empty:
+            raise Exception("No data found in file")
+            
+        # Check for missing critical values
+        critical_nulls = {
+            'Transaction date': df['Transaction date'].isnull().sum(),
+            'Amount': df['Amount'].isnull().sum(),
+            'Customer': df['Customer'].isnull().sum()
+        }
+        
+        if any(critical_nulls.values()):
+            warnings = []
+            for col, count in critical_nulls.items():
+                if count > 0:
+                    warnings.append(f"{count} missing values in {col}")
+            print("⚠️ Data quality warnings:")
+            for warning in warnings:
+                print(f"  - {warning}")
         
         # Initialize lists for records
         records = []
@@ -178,10 +210,14 @@ def process_quickbooks_file(file_content):
                 print(f"Error processing row: {str(e)}")
                 continue
         
+        # Validate processed records
+        if not records:
+            raise Exception("No valid records could be processed from the file")
+            
         # Convert to DataFrame
         df = pd.DataFrame(records)
         
-        # Add derived columns
+        # Add derived columns and calculations
         df['Month'] = df['Date'].dt.to_period('M')
         df['Week'] = df['Date'].dt.to_period('W')
         df['Invoice Month'] = df['Invoice Date'].dt.to_period('M')
@@ -213,6 +249,15 @@ def process_quickbooks_file(file_content):
             'West Springfield Public Schools': 'West Springfield'
         }
         df['District'] = df['Customer'].map(district_map).fillna(df['Customer'])
+        
+        # Final validation of processed data
+        total_amount = df['Amount'].sum()
+        if total_amount <= 0:
+            raise Exception("Total amount is zero or negative - possible data processing error")
+            
+        print(f"✅ Successfully processed {len(df)} records")
+        print(f"   Total amount: ${total_amount:,.2f}")
+        print(f"   Date range: {df['Date'].min().strftime('%Y-%m-%d')} to {df['Date'].max().strftime('%Y-%m-%d')}")
         
         return df
         

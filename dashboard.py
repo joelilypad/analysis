@@ -7,6 +7,7 @@ from io import StringIO
 import re
 from clean_gusto_multi import process_gusto_upload
 from quickbooks_parser import process_quickbooks_upload, generate_revenue_summary, generate_evaluation_counts, generate_service_bundle_analysis
+from school_calendar import generate_school_day_analysis
 import numpy as np
 
 # ========== PAGE CONFIG ==========
@@ -530,3 +531,72 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
+# After the District Analysis section, add School Day Analysis
+st.header("📅 School Day Analysis")
+st.info("This analysis shows revenue per active school day, based on the typical Massachusetts public school calendar.")
+
+# Generate school day analysis
+overall_metrics, monthly_school_metrics = generate_school_day_analysis(filtered_qb)
+
+# Display overall metrics
+col1, col2 = st.columns(2)
+
+col1.metric(
+    "Total School Day Revenue",
+    f"${overall_metrics['school_day_revenue']:,.2f}"
+)
+
+col2.metric(
+    "Average Revenue per School Day",
+    f"${overall_metrics['avg_revenue_per_school_day']:,.2f}/day"
+)
+
+# Create monthly breakdown visualization
+st.subheader("Monthly Revenue per School Day")
+
+# Calculate and display monthly revenue per school day
+monthly_per_day = monthly_school_metrics.copy()
+monthly_per_day['Revenue per School Day'] = (
+    monthly_per_day['school_day_revenue'] / 
+    monthly_per_day['school_days'].clip(lower=1)  # Avoid division by zero
+)
+
+# Bar chart showing revenue per school day by month
+fig = go.Figure()
+
+fig.add_trace(go.Bar(
+    x=monthly_per_day['Month'].astype(str),
+    y=monthly_per_day['Revenue per School Day'],
+    name='Revenue per School Day',
+    text=[f"${x:,.0f}/day" for x in monthly_per_day['Revenue per School Day']],
+    textposition='auto',
+))
+
+fig.update_layout(
+    title="Revenue per Active School Day",
+    xaxis_title="Month",
+    yaxis_title="Revenue per School Day ($)",
+    showlegend=False,
+    height=400
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# Display detailed metrics table
+st.subheader("Monthly School Day Metrics")
+st.write("""
+This table shows the monthly breakdown of revenue and active school days,
+helping identify which months are most efficient in terms of revenue per school day.
+""")
+
+# Format the monthly metrics for display
+display_metrics = monthly_per_day.copy()
+display_metrics['Month'] = display_metrics['Month'].astype(str)
+display_metrics['Total Revenue'] = display_metrics['school_day_revenue'].map('${:,.2f}'.format)
+display_metrics['Active School Days'] = display_metrics['school_days']
+display_metrics['Revenue per School Day'] = display_metrics['Revenue per School Day'].map('${:,.2f}'.format)
+
+# Select and rename columns for display
+display_cols = ['Month', 'Total Revenue', 'Active School Days', 'Revenue per School Day']
+st.dataframe(display_metrics[display_cols], use_container_width=True)
