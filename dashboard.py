@@ -11,6 +11,8 @@ from school_calendar import generate_school_day_analysis
 import numpy as np
 from datetime import datetime
 import hashlib
+import os
+from pathlib import Path
 
 # ========== PAGE CONFIG ==========
 st.set_page_config(
@@ -23,22 +25,62 @@ st.set_page_config(
 st.title("🧠 Lilypad Analytics Dashboard")
 st.write("Analyze operational efficiency and financial performance for Lilypad Learning's evaluation services.")
 
+# Simple file storage functions
+def save_latest_file(uploaded_file, file_type):
+    """Save uploaded file, replacing any previous file of the same type"""
+    if uploaded_file is None:
+        return
+        
+    # Create storage directory if it doesn't exist
+    storage_dir = Path.home() / ".lilypad_cache"
+    storage_dir.mkdir(exist_ok=True)
+    
+    # Save file with fixed name based on type
+    file_path = storage_dir / f"{file_type}_latest.csv"
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getvalue())
+
+def load_latest_file(file_type):
+    """Load the most recent file of given type if it exists"""
+    file_path = Path.home() / ".lilypad_cache" / f"{file_type}_latest.csv"
+    if file_path.exists():
+        with open(file_path, "rb") as f:
+            return f.read()
+    return None
+
 # ========== FILE UPLOADS ==========
-st.sidebar.header("📁 Upload Your Files")
-
-quickbooks_file = st.sidebar.file_uploader(
-    "QuickBooks Financial Export (CSV)",
-    type="csv",
-    key="quickbooks_file",
-    help="Upload the QuickBooks sales/revenue export"
-)
-
-gusto_file = st.sidebar.file_uploader(
-    "Gusto Time Tracking Export (Optional, CSV)",
-    type="csv",
-    key="gusto_file",
-    help="Upload the raw Gusto contractor hours export (optional)"
-)
+with st.sidebar:
+    st.header("📁 Upload Your Files")
+    
+    # Try to load existing files
+    quickbooks_data = load_latest_file("quickbooks")
+    gusto_data = load_latest_file("gusto")
+    
+    # QuickBooks file uploader
+    quickbooks_file = st.file_uploader(
+        "QuickBooks Financial Export (CSV)",
+        type="csv",
+        key="quickbooks_file",
+        help="Upload the QuickBooks sales/revenue export"
+    )
+    if quickbooks_file:
+        save_latest_file(quickbooks_file, "quickbooks")
+        st.rerun()
+    elif quickbooks_data:  # Use saved data if available
+        quickbooks_file = quickbooks_data
+    
+    # Gusto file uploader
+    gusto_file = st.file_uploader(
+        "Gusto Time Tracking Export (Optional, CSV)",
+        type="csv",
+        key="gusto_file",
+        help="Upload the raw Gusto contractor hours export (optional)"
+    )
+    if gusto_file:
+        save_latest_file(gusto_file, "gusto")
+        st.rerun()
+    elif gusto_data:  # Use saved data if available
+        gusto_file = gusto_data
 
 # ========== DATA PROCESSING ==========
 @st.cache_data
