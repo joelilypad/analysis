@@ -154,7 +154,11 @@ col1.metric("Total Revenue", f"${total_revenue:,.2f}")
 col2.metric("Total Evaluations", f"{total_evals:,}")
 col3.metric("Avg Revenue/Eval", f"${avg_revenue_per_eval:,.2f}")
 if gusto_df is not None:
-    col4.metric("Gross Margin", f"${gross_margin:,.2f}")
+    col4.metric(
+        "Gross Profit",
+        f"${gross_margin:,.2f}",
+        f"{margin_percent:.1f}%"
+    )
 
 # Monthly metrics
 st.subheader("Monthly Analysis")
@@ -299,9 +303,10 @@ col1.metric(
 
 col2.metric(
     "Average Revenue per School Day",
-    f"${overall_metrics['avg_revenue_per_school_day']:,.2f}/day",
-    f"{overall_metrics['total_school_days']} school days total"
+    f"${overall_metrics['avg_revenue_per_school_day']:,.2f}/day"
 )
+
+st.write(f"{overall_metrics['total_school_days']} school days total")
 
 # Create monthly breakdown visualization
 st.subheader("Monthly Revenue per School Day")
@@ -526,3 +531,41 @@ if gusto_df is not None:
             'Revenue', 'Total Hours', 'Total Cost', 'Margin', 'Margin %'
         ]
         st.dataframe(student_details[display_cols].sort_values(['Service Date', 'Student Initials']), use_container_width=True)
+
+# After the main financial metrics, add cost breakdown
+st.markdown("### 💰 Cost Breakdown")
+
+# Calculate costs by psychologist
+psych_costs = (
+    filtered_gusto
+    .groupby('Psychologist')
+    .agg({
+        'Hours': 'sum',
+        'Cost': 'sum'
+    })
+    .round(2)
+    .sort_values('Cost', ascending=False)
+)
+
+# Add total row
+total_row = pd.DataFrame({
+    'Hours': [psych_costs['Hours'].sum()],
+    'Cost': [psych_costs['Cost'].sum()]
+}, index=['Total'])
+
+psych_costs = pd.concat([psych_costs, total_row])
+
+# Format for display
+display_costs = psych_costs.copy()
+display_costs['Hours'] = display_costs['Hours'].map('{:,.1f}'.format)
+display_costs['Cost'] = display_costs['Cost'].map('${:,.2f}'.format)
+
+st.dataframe(
+    display_costs,
+    column_config={
+        "Psychologist": "Psychologist",
+        "Hours": "Total Hours",
+        "Cost": "Total Cost"
+    },
+    use_container_width=True
+)
