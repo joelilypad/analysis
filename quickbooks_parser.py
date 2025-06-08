@@ -267,12 +267,19 @@ def process_quickbooks_file(file_content):
 def process_quickbooks_upload(uploaded_file):
     """Process uploaded QuickBooks file and return cleaned DataFrame."""
     try:
-        # Read the uploaded file
-        content = uploaded_file.getvalue().decode('utf-8')
-        
+        # Handle both string and bytes input
+        if isinstance(uploaded_file, (str, bytes)):
+            # If it's already bytes or string content
+            content = uploaded_file.decode('utf-8') if isinstance(uploaded_file, bytes) else uploaded_file
+        else:
+            # If it's a file-like object (e.g. StreamlitUploadedFile)
+            try:
+                content = uploaded_file.read().decode('utf-8')
+            except AttributeError:
+                content = uploaded_file.getvalue().decode('utf-8')
+            
         # Process the data
         df = process_quickbooks_file(content)
-        
         return df
         
     except Exception as e:

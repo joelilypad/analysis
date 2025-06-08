@@ -37,8 +37,19 @@ def save_latest_file(uploaded_file, file_type):
     
     # Save file with fixed name based on type
     file_path = storage_dir / f"{file_type}_latest.csv"
+    
+    # Get file content as bytes
+    if isinstance(uploaded_file, (str, bytes)):
+        content = uploaded_file if isinstance(uploaded_file, bytes) else uploaded_file.encode('utf-8')
+    else:
+        try:
+            content = uploaded_file.read()
+            uploaded_file.seek(0)  # Reset file pointer
+        except AttributeError:
+            content = uploaded_file.getvalue()
+    
     with open(file_path, "wb") as f:
-        f.write(uploaded_file.getvalue())
+        f.write(content)
 
 def load_latest_file(file_type):
     """Load the most recent file of given type if it exists"""
