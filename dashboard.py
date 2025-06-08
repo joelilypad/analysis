@@ -10,9 +10,6 @@ from quickbooks_parser import process_quickbooks_upload, generate_revenue_summar
 from school_calendar import generate_school_day_analysis
 import numpy as np
 from datetime import datetime
-import hashlib
-import os
-from pathlib import Path
 
 # ========== PAGE CONFIG ==========
 st.set_page_config(
@@ -24,46 +21,6 @@ st.set_page_config(
 # ========== HEADER ==========
 st.title("🧠 Lilypad Analytics Dashboard")
 st.write("Analyze operational efficiency and financial performance for Lilypad Learning's evaluation services.")
-
-# Simple file storage functions
-def save_latest_file(uploaded_file, file_type):
-    """Save uploaded file, replacing any previous file of the same type"""
-    if uploaded_file is None:
-        return
-        
-    # Create storage directory if it doesn't exist
-    storage_dir = Path.home() / ".lilypad_cache"
-    storage_dir.mkdir(exist_ok=True)
-    
-    # Save file with fixed name based on type
-    file_path = storage_dir / f"{file_type}_latest.csv"
-    
-    # Get file content as bytes
-    if isinstance(uploaded_file, (str, bytes)):
-        content = uploaded_file if isinstance(uploaded_file, bytes) else uploaded_file.encode('utf-8')
-    else:
-        try:
-            content = uploaded_file.read()
-            uploaded_file.seek(0)  # Reset file pointer
-        except AttributeError:
-            content = uploaded_file.getvalue()
-    
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-def load_latest_file(file_type):
-    """Load the most recent file of given type if it exists"""
-    file_path = Path.home() / ".lilypad_cache" / f"{file_type}_latest.csv"
-    if file_path.exists():
-        with open(file_path, "rb") as f:
-            return f.read()
-    return None
-
-def clear_latest_file(file_type):
-    """Clear the saved file of given type"""
-    file_path = Path.home() / ".lilypad_cache" / f"{file_type}_latest.csv"
-    if file_path.exists():
-        file_path.unlink()
 
 # ========== FILE UPLOADS ==========
 with st.sidebar:
